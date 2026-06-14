@@ -96,6 +96,11 @@ defmodule AgentManager.Store.Ecto do
   end
 
   @impl true
+  def list_training_bots do
+    Repo.all(from b in Bot, where: fragment("?->>'status' = 'ON_TRAINING'", b.training_info))
+  end
+
+  @impl true
   def insert_llm_call(attrs) do
     %LlmCall{} |> LlmCall.changeset(attrs) |> Repo.insert()
     :ok

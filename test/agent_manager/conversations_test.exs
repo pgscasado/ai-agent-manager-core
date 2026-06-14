@@ -69,27 +69,42 @@ defmodule AgentManager.ConversationsTest do
     assert Conversations.whereis(bot.id, "a") != pid_a
   end
 
-  test "messages of one user are processed strictly in order", %{bot: bot} do
-    Fake.set_responder(fn messages, opts ->
-      if opts[:json], do: Process.sleep(30)
-      last = messages |> Enum.filter(&(&1.role == :user)) |> List.last()
-      {:ok, Jason.encode!(%{response: "re: " <> last.content})}
+  test "one user's messages never overlap; different users run concurrently", %{bot: bot} do
+    # Tracks how many answer generations are in flight at once.
+    {:ok, gauge} = Agent.start_link(fn -> {0, 0} end)
+
+    Fake.set_responder(fn _messages, opts ->
+      if opts[:json] do
+        Agent.update(gauge, fn {now, peak} -> {now + 1, max(peak, now + 1)} end)
+        Process.sleep(40)
+        Agent.update(gauge, fn {now, peak} -> {now - 1, peak} end)
+      end
+
+      {:ok, ~s({"response": "ok"})}
     end)
 
-    tasks =
-      for n <- 1..5,
-          do:
-            Task.async(fn ->
-              Process.sleep(n * 5)
-              Conversations.ask(bot, "u", "msg #{n}")
-            end)
+    ask_all = fn users ->
+      users
+      |> Enum.with_index(1)
+      |> Enum.map(fn {user, n} ->
+        Task.async(fn -> Conversations.ask(bot, user, "msg #{n}") end)
+      end)
+      |> Enum.each(&Task.await/1)
+    end
 
-    Enum.each(tasks, &Task.await/1)
+    Events.subscribe("message.answered")
+    ask_all.(List.duplicate("same", 5))
+    assert {0, 1} = Agent.get(gauge, & &1)
 
-    wait_until(fn -> length(Store.impl().list_messages(bot.id, "u", [])) == 5 end)
+    # Stored in the order they were answered.
+    answered = for _ <- 1..5, do: assert_event("message.answered").payload.text
+    wait_until(fn -> length(Store.impl().list_messages(bot.id, "same", [])) == 5 end)
+    assert Enum.map(Store.impl().list_messages(bot.id, "same", []), & &1.message) == answered
 
-    assert Enum.map(Store.impl().list_messages(bot.id, "u", []), & &1.message) ==
-             for(n <- 1..5, do: "msg #{n}")
+    Agent.update(gauge, fn _ -> {0, 0} end)
+    ask_all.(for n <- 1..5, do: "user-#{n}")
+    assert {0, peak} = Agent.get(gauge, & &1)
+    assert peak > 1
   end
 
   test "start message on first contact, then the model", %{bot: bot} do

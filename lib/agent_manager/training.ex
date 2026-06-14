@@ -20,7 +20,8 @@ defmodule AgentManager.Training do
           "error_messages" => [],
           "data_json" => content,
           "duration" => 0,
-          "timestamp" => DateTime.utc_now()
+          "timestamp" => DateTime.utc_now(),
+          "overload" => !!opts[:overload]
         })
 
       Events.publish("training.requested", %{content: content, overload: !!opts[:overload]},
@@ -45,15 +46,32 @@ defmodule AgentManager.Training.Coordinator do
     * jobs are tasks under `AgentManager.Training.TaskSupervisor`, not linked
       to the coordinator: a crashing job is reported as `training.failed` and
       the coordinator carries on
+
+  ## Recovery
+
+  The queue lives in this process, but it is never the only copy: every
+  request first marks the bot `ON_TRAINING` in the store, with its content
+  and flags. So on every start (first boot, a supervisor restart after a
+  crash, or a node restart) the coordinator rebuilds its state:
+
+    1. **adopts** jobs that are still running - each job registers itself in
+       `AgentManager.Training.Registry`, so a coordinator restarted after a
+       crash finds and monitors them instead of starting duplicates
+    2. **re-queues** every bot still `ON_TRAINING` without a live job - the
+       requests that were waiting, or running when the node went down
+
+  Re-running an interrupted job is safe: training diffs against what is
+  already indexed and swaps segments in one transaction.
   """
 
   use GenServer
   require Logger
 
-  alias AgentManager.{Bots, Events}
+  alias AgentManager.{Bots, Events, Store}
   alias AgentManager.Pipelines.Training, as: TrainingPipeline
 
   @tasks AgentManager.Training.TaskSupervisor
+  @registry AgentManager.Training.Registry
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -62,13 +80,54 @@ defmodule AgentManager.Training.Coordinator do
 
   @impl true
   def init(opts) do
+    # Subscribe before reading the store, so a request made while we recover
+    # is not missed (if it duplicates a recovered one, the two coalesce).
     Events.subscribe("training.requested")
 
     max =
       opts[:max_concurrency] ||
         Application.get_env(:agent_manager, __MODULE__, [])[:max_concurrency] || 2
 
-    {:ok, %{max: max, running: %{}, refs: %{}, queue: :queue.new(), pending: %{}}}
+    state = %{max: max, running: %{}, refs: %{}, queue: :queue.new(), pending: %{}}
+    {:ok, state, {:continue, :recover}}
+  end
+
+  @impl true
+  def handle_continue(:recover, state) do
+    state = Enum.reduce(running_jobs(), state, &adopt/2)
+
+    recovered =
+      for bot <- Store.impl().list_training_bots(), not Map.has_key?(state.running, bot.id) do
+        info = bot.training_info
+
+        %{
+          bot_id: bot.id,
+          payload: %{content: info.data_json || %{}, overload: info.overload || false},
+          correlation_id: Ecto.UUID.generate()
+        }
+      end
+
+    if state.running != %{} or recovered != [] do
+      Logger.info(
+        "[training] recovered: adopted #{map_size(state.running)} running job(s), " <>
+          "re-queued #{length(recovered)} interrupted request(s)"
+      )
+    end
+
+    {:noreply, recovered |> Enum.reduce(state, &enqueue/2) |> drain()}
+  end
+
+  defp running_jobs,
+    do: Registry.select(@registry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+
+  defp adopt({bot_id, pid}, state) do
+    ref = Process.monitor(pid)
+
+    %{
+      state
+      | running: Map.put(state.running, bot_id, pid),
+        refs: Map.put(state.refs, ref, bot_id)
+    }
   end
 
   @impl true
@@ -79,23 +138,18 @@ defmodule AgentManager.Training.Coordinator do
   @impl true
   def handle_info({:event, %{type: "training.requested"} = event}, state) do
     request = %{bot_id: event.bot_id, payload: event.payload, correlation_id: event.id}
-
-    state =
-      if Map.has_key?(state.pending, event.bot_id) do
-        put_in(state.pending[event.bot_id], request)
-      else
-        %{
-          state
-          | pending: Map.put(state.pending, event.bot_id, request),
-            queue: :queue.in(event.bot_id, state.queue)
-        }
-      end
-
-    {:noreply, drain(state)}
+    {:noreply, request |> enqueue(state) |> drain()}
   end
 
   def handle_info({ref, _result}, state) when is_map_key(state.refs, ref) do
     Process.demonitor(ref, [:flush])
+    {:noreply, state |> finish(ref) |> drain()}
+  end
+
+  # An adopted job is not our task, so it ends with a plain :normal DOWN
+  # (its outcome was already published as an event by the job itself).
+  def handle_info({:DOWN, ref, :process, _pid, :normal}, state)
+      when is_map_key(state.refs, ref) do
     {:noreply, state |> finish(ref) |> drain()}
   end
 
@@ -113,6 +167,19 @@ defmodule AgentManager.Training.Coordinator do
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # Queue a request; a bot already waiting keeps its place but takes the newest content.
+  defp enqueue(request, state) do
+    if Map.has_key?(state.pending, request.bot_id) do
+      put_in(state.pending[request.bot_id], request)
+    else
+      %{
+        state
+        | pending: Map.put(state.pending, request.bot_id, request),
+          queue: :queue.in(request.bot_id, state.queue)
+      }
+    end
+  end
 
   defp finish(state, ref) do
     {bot_id, refs} = Map.pop(state.refs, ref)
@@ -150,6 +217,16 @@ defmodule AgentManager.Training.Coordinator do
 
   @doc false
   def run(%{bot_id: bot_id, payload: payload, correlation_id: correlation_id}) do
+    # Registering lets a restarted coordinator find this job (the entry goes
+    # away when we exit). The registry is unique per bot, so if recovery ever
+    # races a job that had not registered yet, the second one steps aside.
+    case Registry.register(@registry, bot_id, nil) do
+      {:ok, _} -> do_run(bot_id, payload, correlation_id)
+      {:error, {:already_registered, _pid}} -> :duplicate
+    end
+  end
+
+  defp do_run(bot_id, payload, correlation_id) do
     started = System.monotonic_time(:millisecond)
     elapsed = fn -> System.monotonic_time(:millisecond) - started end
 
@@ -157,7 +234,9 @@ defmodule AgentManager.Training.Coordinator do
       nil ->
         Events.publish(
           "training.failed",
-          %{errors: ["bot not found"], duration_ms: 0, content: payload.content}, bot_id: bot_id)
+          %{errors: ["bot not found"], duration_ms: 0, content: payload.content},
+          bot_id: bot_id
+        )
 
       bot ->
         Events.publish("training.started", %{}, bot_id: bot_id, correlation_id: correlation_id)

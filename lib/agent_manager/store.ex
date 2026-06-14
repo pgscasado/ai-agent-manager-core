@@ -31,6 +31,9 @@ defmodule AgentManager.Store do
 
   @callback insert_llm_call(map()) :: :ok
 
+  @doc "Bots whose training_info.status is ON_TRAINING (used to recover the training queue)."
+  @callback list_training_bots() :: [Bot.t()]
+
   def impl, do: Application.get_env(:agent_manager, :store, AgentManager.Store.Ecto)
 
   @doc false

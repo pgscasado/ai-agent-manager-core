@@ -98,11 +98,13 @@ defmodule AgentManager.Bots.Bot.TrainingInfo do
     field :data_json, :map, default: %{}
     field :duration, :integer, default: 0
     field :timestamp, :utc_datetime_usec
+    # kept so a run recovered after a restart behaves like the request that started it
+    field :overload, :boolean, default: false
   end
 
   def changeset(info, attrs) do
     info
-    |> cast(attrs, [:status, :error_messages, :data_json, :duration, :timestamp])
+    |> cast(attrs, [:status, :error_messages, :data_json, :duration, :timestamp, :overload])
     |> then(
       &if(get_field(&1, :timestamp), do: &1, else: put_change(&1, :timestamp, DateTime.utc_now()))
     )

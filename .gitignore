@@ -25,3 +25,6 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 agent_manager-*.tar
 
+
+# Local secrets
+.env

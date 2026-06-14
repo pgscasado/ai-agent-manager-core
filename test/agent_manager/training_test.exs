@@ -88,6 +88,52 @@ defmodule AgentManager.TrainingTest do
     assert Process.whereis(Coordinator) == coordinator
   end
 
+  describe "recovery" do
+    setup do
+      # Make training slow enough to interrupt, via a config edit to the pipeline.
+      slow = {fn ctx, _ -> Process.sleep(300) && {:ok, ctx} end, name: :slow}
+
+      Application.put_env(:agent_manager, AgentManager.Pipelines.Training,
+        edits: [{:insert_before, AgentManager.Pipelines.Training.Steps.Index, slow}]
+      )
+
+      on_exit(fn -> Application.delete_env(:agent_manager, AgentManager.Pipelines.Training) end)
+    end
+
+    test "a crashed coordinator is restarted and adopts the running job instead of duplicating it" do
+      bot = create_bot!()
+      Events.subscribe({:bot, bot.id})
+      {:ok, _} = Training.request(bot, @content)
+      assert_event("training.started")
+
+      old = Process.whereis(Coordinator)
+      Process.exit(old, :kill)
+      wait_until(fn -> Process.whereis(Coordinator) not in [nil, old] end)
+
+      assert Coordinator.status().running == [bot.id]
+      assert_event("training.completed", 5_000)
+      refute_receive {:event, %{type: "training.started"}}, 400
+      wait_until(fn -> Coordinator.status().running == [] end)
+    end
+
+    test "requests interrupted by a restart are re-queued from the store" do
+      bot = create_bot!()
+
+      # What a node that died mid-queue leaves behind: ON_TRAINING, no job.
+      {:ok, _} =
+        Bots.set_training_info(bot, %{"status" => "ON_TRAINING", "data_json" => @content})
+
+      Events.subscribe({:bot, bot.id})
+      :ok = Supervisor.terminate_child(AgentManager.Training.Root, Coordinator)
+      {:ok, _} = Supervisor.restart_child(AgentManager.Training.Root, Coordinator)
+
+      assert_event("training.started")
+      assert assert_event("training.completed", 5_000).payload.stats.new_segments == 3
+      wait_until(fn -> Bots.get(bot.id).training_info.status == :FINISHED end)
+      assert Bots.get(bot.id).model_config.content.bot_name == "Loja"
+    end
+  end
+
   test "requests for a bot that is already training are coalesced" do
     bot = create_bot!()
     Events.subscribe({:bot, bot.id})

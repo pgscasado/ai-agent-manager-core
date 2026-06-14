@@ -1,5 +1,18 @@
 import Config
 
+# Local secrets: in dev/test, KEY=VALUE lines from a gitignored `.env` are
+# exported before any other config is read (see `.env.example`). Variables
+# already set in the shell win. Production reads real environment variables only.
+if config_env() != :prod and File.exists?(Path.expand("../.env", __DIR__)) do
+  for line <- File.stream!(Path.expand("../.env", __DIR__)),
+      line = String.trim(line),
+      line != "" and not String.starts_with?(line, "#"),
+      [key, value] <- [String.split(line, "=", parts: 2)],
+      System.get_env(String.trim(key)) in [nil, ""] do
+    System.put_env(String.trim(key), value |> String.trim() |> String.trim("\""))
+  end
+end
+
 config :agent_manager,
   ecto_repos: [AgentManager.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true],

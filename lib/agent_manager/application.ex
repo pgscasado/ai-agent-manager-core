@@ -15,6 +15,7 @@ defmodule AgentManager.Application do
       │   ├── Registry {bot_id, user_id} -> pid
       │   └── DynamicSupervisor - one Conversations.Server per active conversation
       ├── AgentManager.Training.Root (rest_for_one)
+      │   ├── Registry bot_id -> running job (lets a restarted coordinator adopt jobs)
       │   ├── Task.Supervisor - training jobs
       │   └── Training.Coordinator - queue + concurrency limit
       └── AgentManagerWeb.Endpoint
@@ -41,6 +42,7 @@ defmodule AgentManager.Application do
              name: AgentManager.Conversations.Supervisor, strategy: :one_for_one}
           ]),
           supervisor(AgentManager.Training.Root, [
+            {Registry, keys: :unique, name: AgentManager.Training.Registry},
             {Task.Supervisor, name: AgentManager.Training.TaskSupervisor},
             AgentManager.Training.Coordinator
           ]),
@@ -58,12 +60,18 @@ defmodule AgentManager.Application do
         Enum.any?(
           backends,
           &(&1 in [AgentManager.Store.Ecto, AgentManager.VectorStore.Pgvector])
-        ), do: [AgentManager.Repo], else: []) ++
+        ),
+        do: [AgentManager.Repo],
+        else: []
+      ) ++
         if(
           Enum.any?(
             backends,
             &(&1 in [AgentManager.Store.Memory, AgentManager.Store.Memory.Vectors])
-          ), do: [AgentManager.Store.Memory], else: [])
+          ),
+          do: [AgentManager.Store.Memory],
+          else: []
+        )
     )
   end
 

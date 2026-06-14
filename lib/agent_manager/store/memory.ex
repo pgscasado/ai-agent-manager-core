@@ -191,6 +191,10 @@ defmodule AgentManager.Store.Memory do
   end
 
   @impl AgentManager.Store
+  def list_training_bots,
+    do: Enum.filter(all_bots(), &match?(%{training_info: %{status: :ON_TRAINING}}, &1))
+
+  @impl AgentManager.Store
   def insert_llm_call(attrs) do
     :ets.insert(@calls, {Ecto.UUID.generate(), Map.put(attrs, :inserted_at, DateTime.utc_now())})
     :ok
