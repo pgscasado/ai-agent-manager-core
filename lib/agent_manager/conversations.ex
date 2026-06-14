@@ -219,7 +219,9 @@ defmodule AgentManager.Conversations.Server do
         usage: ctx.usage,
         persist: persist?,
         record: attrs
-      }, correlation_id: ctx.id)
+      },
+      correlation_id: ctx.id
+    )
 
     state = if persist?, do: append(state, attrs), else: state
     if ended?, do: cancel_timers(state), else: arm_timers(state, bot)
