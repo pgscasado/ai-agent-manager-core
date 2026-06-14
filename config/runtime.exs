@@ -23,6 +23,23 @@ end
 config :agent_manager, AgentManagerWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# Default models can be chosen per deployment, e.g. a Gemini-only setup:
+#   DEFAULT_CHAT_MODEL=gemini:gemini-2.5-flash DEFAULT_EMBEDDING_MODEL=gemini:gemini-embedding-001
+# (bots that set their own models are unaffected).
+model_defaults =
+  for {key, var} <- [
+        chat: "DEFAULT_CHAT_MODEL",
+        utility: "DEFAULT_UTILITY_MODEL",
+        embedding: "DEFAULT_EMBEDDING_MODEL"
+      ],
+      value = System.get_env(var),
+      value not in [nil, ""],
+      do: {key, value}
+
+if model_defaults != [] do
+  config :agent_manager, AgentManager.Models, defaults: model_defaults
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

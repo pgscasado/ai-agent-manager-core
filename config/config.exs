@@ -34,6 +34,12 @@ config :agent_manager, AgentManager.Models,
       adapter: AgentManager.Models.Adapters.Anthropic,
       api_key: {:system, "ANTHROPIC_API_KEY"}
     ],
+    # Gemini through Google's OpenAI-compatible endpoint (chat + embeddings).
+    gemini: [
+      adapter: AgentManager.Models.Adapters.OpenAI,
+      base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
+      api_key: {:system, "GEMINI_API_KEY"}
+    ],
     ollama: [adapter: AgentManager.Models.Adapters.Ollama, base_url: {:system, "OLLAMA_URL"}],
     fake: [adapter: AgentManager.Models.Adapters.Fake]
   ],
@@ -52,6 +58,7 @@ config :agent_manager, AgentManager.Models,
   budgets: %{
     "openai" => 12_000,
     "anthropic" => 16_000,
+    "gemini" => 16_000,
     "ollama" => 6_000,
     "openai:gpt-4o-mini" => 12_000
   }
