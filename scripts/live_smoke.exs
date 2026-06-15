@@ -6,7 +6,8 @@
 # tests every provider that has a key. Keys are never printed. Spends a few
 # cents of tokens per provider. Override models with LIVE_OPENAI_MODEL,
 # LIVE_ANTHROPIC_MODEL, LIVE_GEMINI_MODEL, and the embedding model with
-# LIVE_EMBEDDING_MODEL (e.g. "fake:embed" or "ollama:nomic-embed-text"). LIVE_DRY_RUN=1 runs the same checks
+# LIVE_EMBEDDING_MODEL (e.g. "fake:embed" or "ollama:nomic-embed-text"). Local models via
+# Ollama are tested when LIVE_OLLAMA_MODEL is set (e.g. qwen2.5:3b). LIVE_DRY_RUN=1 runs the same checks
 # against the offline fake provider (no keys, no cost).
 
 alias AgentManager.{Bots, Conversations, Events, Models, Tools, Training}
@@ -56,7 +57,9 @@ providers =
     [
       {"openai", "OPENAI_API_KEY", "openai:" <> System.get_env("LIVE_OPENAI_MODEL", "gpt-4o-mini"), "openai:text-embedding-3-small"},
       {"anthropic", "ANTHROPIC_API_KEY", "anthropic:" <> System.get_env("LIVE_ANTHROPIC_MODEL", "claude-opus-5"), nil},
-      {"gemini", "GEMINI_API_KEY", "gemini:" <> System.get_env("LIVE_GEMINI_MODEL", "gemini-3.8-flash"), "gemini:gemini-embedding-001"}
+      {"gemini", "GEMINI_API_KEY", "gemini:" <> System.get_env("LIVE_GEMINI_MODEL", "gemini-3.8-flash"), "gemini:gemini-embedding-001"},
+      # local models need no key: enabled by naming the chat model
+      {"ollama", "LIVE_OLLAMA_MODEL", "ollama:" <> System.get_env("LIVE_OLLAMA_MODEL", ""), "ollama:embeddinggemma"}
     ]
     |> Enum.filter(fn {_, var, _, _} -> System.get_env(var) not in [nil, ""] end)
   end

@@ -21,13 +21,16 @@ defmodule AgentManager.Models.Adapters.Ollama do
             &is_nil(elem(&1, 1))
           )
       }
-      |> then(&if(opts[:json], do: Map.put(&1, :format, "json"), else: &1))
-      |> then(
-        &if(opts[:tools] in [nil, []],
-          do: &1,
-          else: Map.put(&1, :tools, encode_tools(opts[:tools]))
-        )
-      )
+      # `format: "json"` constrains decoding to JSON, which also blocks the
+      # model's native tool-call syntax - so it is only used when no tools are
+      # offered. With tools, the prompt asks for JSON and callers parse leniently.
+      |> then(fn body ->
+        case {opts[:json], opts[:tools]} do
+          {_, [_ | _] = tools} -> Map.put(body, :tools, encode_tools(tools))
+          {true, _} -> Map.put(body, :format, "json")
+          _ -> body
+        end
+      end)
 
     with {:ok, %{"message" => message} = raw} <- post("/api/chat", body, opts) do
       {:ok,
