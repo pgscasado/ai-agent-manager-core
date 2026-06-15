@@ -121,7 +121,7 @@ defmodule AgentManager.Models do
       {latency_us, result} =
         :timer.tc(fn ->
           :telemetry.span([:agent_manager, :models, :chat], meta, fn ->
-            result = r.adapter.chat(messages, call_opts)
+            result = limited(r, call_opts, fn -> r.adapter.chat(messages, call_opts) end)
             {result, Map.put(meta, :status, elem(result, 0))}
           end)
         end)
@@ -135,12 +135,65 @@ defmodule AgentManager.Models do
   def embed(spec, texts, opts \\ []) when is_list(texts) do
     with {:ok, r} <- resolve(spec, :embedding) do
       meta = %{spec: r.spec, provider: r.provider, count: length(texts)}
+      call_opts = merge_opts(r, opts)
 
       :telemetry.span([:agent_manager, :models, :embed], meta, fn ->
-        result = r.adapter.embed(texts, merge_opts(r, opts))
+        result = limited(r, call_opts, fn -> r.adapter.embed(texts, call_opts) end)
         {result, Map.put(meta, :status, elem(result, 0))}
       end)
     end
+  end
+
+  # Providers configured with `rate_limit:` are paced by a RateLimiter, and
+  # their 429/503 answers are retried here (after the provider's suggested
+  # delay when it gives one) so that every attempt goes through the limiter.
+  defp limited(%Resolved{opts: provider_opts} = r, _call_opts, fun) do
+    case provider_opts[:rate_limit] do
+      nil -> fun.()
+      limit -> attempt(r.provider, limit, provider_opts[:max_retries] || 3, 0, fun)
+    end
+  end
+
+  defp attempt(provider, limit, max_retries, n, fun) do
+    :ok = AgentManager.Models.RateLimiter.acquire(provider, limit)
+
+    case fun.() do
+      {:error, {:http, status, body}} when status in [429, 503] and n < max_retries ->
+        delay = retry_delay(body) || min(2_000 * Integer.pow(2, n), 60_000)
+        require Logger
+
+        Logger.warning(
+          "[models] #{provider} returned #{status}; retrying in #{delay}ms (#{n + 1}/#{max_retries})"
+        )
+
+        Process.sleep(delay)
+        attempt(provider, limit, max_retries, n + 1, fun)
+
+      result ->
+        result
+    end
+  end
+
+  # Google's RetryInfo detail: "retryDelay": "59s" (possibly fractional).
+  defp retry_delay(body) do
+    body
+    |> List.wrap()
+    |> Enum.find_value(fn
+      %{"error" => %{"details" => details}} when is_list(details) ->
+        Enum.find_value(details, fn
+          %{"retryDelay" => delay} when is_binary(delay) ->
+            case Float.parse(delay) do
+              {seconds, "s"} -> round(seconds * 1000)
+              _ -> nil
+            end
+
+          _ ->
+            nil
+        end)
+
+      _ ->
+        nil
+    end)
   end
 
   @doc "Spec string a bot's embeddings are stored under (resolved, so aliases match)."
@@ -160,6 +213,12 @@ defmodule AgentManager.Models do
     |> Keyword.merge(Keyword.drop(opts, [:api_keys, :bot_id, :correlation_id, :kind]))
     |> then(fn o -> if key in [nil, ""], do: o, else: Keyword.put(o, :api_key, key) end)
     |> Keyword.put(:model, r.name)
+    |> then(fn o ->
+      # rate-limited providers are retried by `limited/3`, not blindly by the HTTP client
+      if r.opts[:rate_limit],
+        do: Keyword.update(o, :req_options, [retry: false], &Keyword.put(&1, :retry, false)),
+        else: o
+    end)
   end
 
   defp report(r, {:ok, response}, latency_ms, call_opts, opts) do

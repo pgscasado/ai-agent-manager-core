@@ -4,6 +4,80 @@ defmodule AgentManager.ModelsTest do
   alias AgentManager.{Events, Models}
   alias AgentManager.Models.Adapters.{Anthropic, OpenAI}
 
+  describe "rate-limited providers" do
+    setup do
+      original = Application.get_env(:agent_manager, AgentManager.Models)
+
+      providers =
+        Keyword.put(original[:providers], :limited,
+          adapter: Fake,
+          rate_limit: {2, 300},
+          max_retries: 2
+        )
+
+      Application.put_env(
+        :agent_manager,
+        AgentManager.Models,
+        Keyword.put(original, :providers, providers)
+      )
+
+      on_exit(fn -> Application.put_env(:agent_manager, AgentManager.Models, original) end)
+    end
+
+    test "requests beyond the window wait for a slot instead of failing" do
+      Fake.set_responder(fn _, _ -> {:ok, "ok"} end)
+
+      {micros, results} =
+        :timer.tc(fn ->
+          1..4
+          |> Enum.map(fn _ ->
+            Task.async(fn -> Models.chat("limited:m", [%{role: :user, content: "x"}]) end)
+          end)
+          |> Enum.map(&Task.await/1)
+        end)
+
+      assert Enum.all?(results, &match?({:ok, %{content: "ok"}}, &1))
+      # 2 per 300ms: the 3rd and 4th requests have to wait for the window
+      assert micros >= 280_000
+    end
+
+    test "429/503 are retried through the limiter, honouring the provider's retryDelay" do
+      {:ok, attempts} = Agent.start_link(fn -> 0 end)
+
+      Fake.set_responder(fn _, opts ->
+        # the HTTP client's own retries are turned off for limited providers
+        assert opts[:req_options][:retry] == false
+
+        case Agent.get_and_update(attempts, &{&1, &1 + 1}) do
+          0 ->
+            {:error, {:http, 429, [%{"error" => %{"details" => [%{"retryDelay" => "0.2s"}]}}]}}
+
+          1 ->
+            {:error, {:http, 503, %{"error" => %{"message" => "high demand"}}}}
+
+          _ ->
+            {:ok, "finally"}
+        end
+      end)
+
+      {micros, result} =
+        :timer.tc(fn -> Models.chat("limited:m", [%{role: :user, content: "x"}]) end)
+
+      assert {:ok, %{content: "finally"}} = result
+      assert Agent.get(attempts, & &1) == 3
+      # waits 200ms (the 429's retryDelay) + 4s (backoff 2s * 2^1 for the 503, which has none)
+      assert micros >= 4_200_000
+    end
+
+    test "gives up after max_retries" do
+      Fake.set_responder(fn _, _ ->
+        {:error, {:http, 429, [%{"error" => %{"details" => [%{"retryDelay" => "0.01s"}]}}]}}
+      end)
+
+      assert {:error, {:http, 429, _}} = Models.chat("limited:m", [%{role: :user, content: "x"}])
+    end
+  end
+
   describe "resolve/2" do
     test "resolves provider:model specs, defaults and unknown providers" do
       assert {:ok, %{provider: "alt", name: "big", adapter: Fake}} = Models.resolve("alt:big")

@@ -146,7 +146,11 @@ defmodule AgentManager.Models.Supervisor do
       end
 
     Supervisor.init(
-      [{Registry, keys: :unique, name: AgentManager.Models.Registry} | serving_children],
+      [
+        {Registry, keys: :unique, name: AgentManager.Models.Registry},
+        {DynamicSupervisor, name: AgentManager.Models.LimiterSupervisor, strategy: :one_for_one}
+        | serving_children
+      ],
       strategy: :one_for_one
     )
   end

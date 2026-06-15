@@ -40,6 +40,13 @@ if model_defaults != [] do
   config :agent_manager, AgentManager.Models, defaults: model_defaults
 end
 
+# Free-tier Gemini keys allow only a few requests per minute (e.g. GEMINI_RPM=5);
+# setting it paces all Gemini calls instead of failing them with 429s.
+if rpm = System.get_env("GEMINI_RPM") do
+  config :agent_manager, AgentManager.Models,
+    providers: [gemini: [rate_limit: {String.to_integer(rpm), :minute}, max_retries: 3]]
+end
+
 # MCP servers can also be given as JSON, e.g.
 #   MCP_SERVERS='[{"name":"crm","transport":"http","url":"https://crm.example.com/mcp"}]'
 if mcp_json = System.get_env("MCP_SERVERS") do
