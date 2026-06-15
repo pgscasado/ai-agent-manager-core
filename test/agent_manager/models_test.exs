@@ -76,6 +76,54 @@ defmodule AgentManager.ModelsTest do
 
       assert {:error, {:http, 429, _}} = Models.chat("limited:m", [%{role: :user, content: "x"}])
     end
+
+    test "daily quota exhaustion is not retried" do
+      {:ok, attempts} = Agent.start_link(fn -> 0 end)
+
+      Fake.set_responder(fn _, _ ->
+        Agent.update(attempts, &(&1 + 1))
+
+        {:error,
+         {:http, 429,
+          [
+            %{
+              "error" => %{
+                "details" => [
+                  %{
+                    "violations" => [
+                      %{"quotaId" => "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}
+                    ]
+                  },
+                  %{"retryDelay" => "35s"}
+                ]
+              }
+            }
+          ]}}
+      end)
+
+      {micros, result} =
+        :timer.tc(fn -> Models.chat("limited:m", [%{role: :user, content: "x"}]) end)
+
+      assert {:error, {:http, 429, _}} = result
+      assert Agent.get(attempts, & &1) == 1
+      assert micros < 1_000_000
+    end
+
+    test "a retry that would exceed max_wait is not attempted" do
+      {:ok, attempts} = Agent.start_link(fn -> 0 end)
+
+      Fake.set_responder(fn _, _ ->
+        Agent.update(attempts, &(&1 + 1))
+        {:error, {:http, 429, [%{"error" => %{"details" => [%{"retryDelay" => "59s"}]}}]}}
+      end)
+
+      {micros, result} =
+        :timer.tc(fn -> Models.chat("limited:m", [%{role: :user, content: "x"}]) end)
+
+      assert {:error, {:http, 429, _}} = result
+      assert Agent.get(attempts, & &1) == 1
+      assert micros < 1_000_000
+    end
   end
 
   describe "resolve/2" do

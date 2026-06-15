@@ -147,31 +147,71 @@ defmodule AgentManager.Models do
   # Providers configured with `rate_limit:` are paced by a RateLimiter, and
   # their 429/503 answers are retried here (after the provider's suggested
   # delay when it gives one) so that every attempt goes through the limiter.
+  # Retrying stops when the next wait would exceed `max_wait` (ms, default
+  # 30s) - a chat request must not hang for minutes - and never happens for
+  # daily quotas, which a short wait cannot fix.
   defp limited(%Resolved{opts: provider_opts} = r, _call_opts, fun) do
     case provider_opts[:rate_limit] do
-      nil -> fun.()
-      limit -> attempt(r.provider, limit, provider_opts[:max_retries] || 3, 0, fun)
+      nil ->
+        fun.()
+
+      limit ->
+        deadline = System.monotonic_time(:millisecond) + (provider_opts[:max_wait] || 30_000)
+        attempt(r.provider, limit, provider_opts[:max_retries] || 3, 0, deadline, fun)
     end
   end
 
-  defp attempt(provider, limit, max_retries, n, fun) do
+  defp attempt(provider, limit, max_retries, n, deadline, fun) do
+    require Logger
     :ok = AgentManager.Models.RateLimiter.acquire(provider, limit)
 
     case fun.() do
-      {:error, {:http, status, body}} when status in [429, 503] and n < max_retries ->
+      {:error, {:http, status, body}} = error when status in [429, 503] and n < max_retries ->
         delay = retry_delay(body) || min(2_000 * Integer.pow(2, n), 60_000)
-        require Logger
 
-        Logger.warning(
-          "[models] #{provider} returned #{status}; retrying in #{delay}ms (#{n + 1}/#{max_retries})"
-        )
+        cond do
+          daily_quota?(body) ->
+            Logger.warning("[models] #{provider} daily quota exhausted; not retrying")
+            error
 
-        Process.sleep(delay)
-        attempt(provider, limit, max_retries, n + 1, fun)
+          System.monotonic_time(:millisecond) + delay > deadline ->
+            Logger.warning(
+              "[models] #{provider} returned #{status}; retry in #{delay}ms exceeds max_wait, giving up"
+            )
+
+            error
+
+          true ->
+            Logger.warning(
+              "[models] #{provider} returned #{status}; retrying in #{delay}ms (#{n + 1}/#{max_retries})"
+            )
+
+            Process.sleep(delay)
+            attempt(provider, limit, max_retries, n + 1, deadline, fun)
+        end
 
       result ->
         result
     end
+  end
+
+  # Google reports which quota was hit, e.g. "GenerateRequestsPerDayPerProjectPerModel-FreeTier".
+  defp daily_quota?(body) do
+    body
+    |> List.wrap()
+    |> Enum.any?(fn
+      %{"error" => %{"details" => details}} when is_list(details) ->
+        Enum.any?(details, fn
+          %{"violations" => violations} when is_list(violations) ->
+            Enum.any?(violations, &(is_binary(&1["quotaId"]) and &1["quotaId"] =~ "PerDay"))
+
+          _ ->
+            false
+        end)
+
+      _ ->
+        false
+    end)
   end
 
   # Google's RetryInfo detail: "retryDelay": "59s" (possibly fractional).
