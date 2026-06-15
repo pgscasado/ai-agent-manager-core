@@ -309,6 +309,17 @@ defmodule AgentManager.ToolsTest do
     end
   end
 
+  test "current_time renders local time with a real ISO 8601 offset" do
+    utc = ~U[2026-09-28 14:23:19.123Z]
+    assert AgentManager.Tools.CurrentTime.at(utc, 0) == "2026-09-28T14:23:19Z"
+    assert AgentManager.Tools.CurrentTime.at(utc, -3) == "2026-09-28T11:23:19-03:00"
+    assert AgentManager.Tools.CurrentTime.at(utc, 5.5) == "2026-09-28T19:53:19+05:30"
+
+    {:ok, iso} = AgentManager.Tools.CurrentTime.call(%{"utc_offset_hours" => -3}, nil)
+    assert {:ok, parsed, -10_800} = DateTime.from_iso8601(iso)
+    assert abs(DateTime.diff(parsed, DateTime.utc_now())) < 5
+  end
+
   describe "adapter wire formats for tools" do
     @tools [%{name: "fake__add", description: "Adds", input_schema: %{"type" => "object"}}]
     @history [

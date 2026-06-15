@@ -204,20 +204,31 @@ defmodule AgentManager.Tools.CurrentTime do
   end
 
   @impl true
-  def call(args, _ctx) do
-    offset = round((args["utc_offset_hours"] || 0) * 3600)
+  def call(args, _ctx), do: {:ok, at(DateTime.utc_now(), args["utc_offset_hours"] || 0)}
 
-    {:ok,
-     DateTime.utc_now()
-     |> DateTime.add(offset, :second)
-     |> DateTime.truncate(:second)
-     |> DateTime.to_iso8601()
-     |> Kernel.<>(" (UTC#{format_offset(offset)})")}
+  @doc "Local time at `hours` from UTC as ISO 8601 with its offset, e.g. `2026-09-28T11:23:19-03:00`."
+  def at(%DateTime{} = utc, hours) do
+    offset = round(hours * 3600)
+
+    local =
+      utc
+      |> DateTime.add(offset, :second)
+      |> DateTime.to_naive()
+      |> NaiveDateTime.truncate(:second)
+      |> NaiveDateTime.to_iso8601()
+
+    local <> format_offset(offset)
   end
 
-  defp format_offset(0), do: ""
-  defp format_offset(s) when s > 0, do: "+#{div(s, 3600)}"
-  defp format_offset(s), do: "#{div(s, 3600)}"
+  defp format_offset(0), do: "Z"
+
+  defp format_offset(seconds) do
+    sign = if seconds < 0, do: "-", else: "+"
+    minutes = div(abs(seconds), 60)
+    sign <> pad(div(minutes, 60)) <> ":" <> pad(rem(minutes, 60))
+  end
+
+  defp pad(n), do: n |> Integer.to_string() |> String.pad_leading(2, "0")
 end
 
 defmodule AgentManager.Tools.SearchKnowledge do
