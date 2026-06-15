@@ -128,15 +128,43 @@ defmodule AgentManagerWeb.BotController do
         "embedding_model",
         "api_keys",
         "temperature",
-        "message_buffer"
+        "message_buffer",
+        "tools"
       ])
 
     with :ok <- validate_specs(changes),
+         :ok <- validate_tools(changes["tools"]),
          {:ok, bot} <- Bots.fetch(id),
          {:ok, bot} <- Bots.update(bot, %{"model_config" => changes}) do
       json(conn, BotJSON.show(bot))
     end
   end
+
+  @doc """
+  Sets the tools a bot may call: ids or globs, e.g.
+  `{"tools": ["local:current_time", "mcp:crm/*"]}`. `[]` disables tools.
+  See `GET /tools` for what is available.
+  """
+  def update_tools(conn, %{"id" => id} = params) do
+    with :ok <- validate_tools(params["tools"]),
+         {:ok, bot} <- Bots.fetch(id),
+         {:ok, bot} <- Bots.update(bot, %{"model_config" => %{"tools" => params["tools"]}}) do
+      json(conn, %{
+        tools: bot.model_config.tools,
+        resolved: Enum.map(AgentManager.Tools.for_bot(bot), & &1.id)
+      })
+    end
+  end
+
+  defp validate_tools(nil), do: :ok
+
+  defp validate_tools(tools) when is_list(tools) do
+    if Enum.all?(tools, &is_binary/1),
+      do: :ok,
+      else: {:error, {:bad_request, "tools must be a list of strings"}}
+  end
+
+  defp validate_tools(_), do: {:error, {:bad_request, "tools must be a list of strings"}}
 
   def patch_model_field(conn, %{"id" => id, "value" => value}) do
     field = conn.private.field

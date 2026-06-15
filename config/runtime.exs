@@ -40,6 +40,12 @@ if model_defaults != [] do
   config :agent_manager, AgentManager.Models, defaults: model_defaults
 end
 
+# MCP servers can also be given as JSON, e.g.
+#   MCP_SERVERS='[{"name":"crm","transport":"http","url":"https://crm.example.com/mcp"}]'
+if mcp_json = System.get_env("MCP_SERVERS") do
+  config :agent_manager, AgentManager.MCP, servers: Jason.decode!(mcp_json)
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

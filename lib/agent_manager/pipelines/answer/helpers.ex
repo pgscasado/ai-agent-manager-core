@@ -15,12 +15,16 @@ defmodule AgentManager.Pipelines.Answer.Helpers do
         top_p: 0.5,
         max_tokens: if(bot.token_limit in [nil, 0], do: 750, else: bot.token_limit)
       ]
-      |> Keyword.merge(Keyword.drop(opts, [:model]))
+      |> Keyword.merge(Keyword.drop(opts, [:model, :full]))
       |> Keyword.merge(Context.model_opts(ctx))
 
     case Models.chat(spec, messages, call_opts) do
-      {:ok, response} -> {:ok, response.content, Context.add_usage(ctx, response.usage)}
-      {:error, reason} -> {:error, reason, ctx}
+      {:ok, response} ->
+        ctx = Context.add_usage(ctx, response.usage)
+        if opts[:full], do: {:ok, response, ctx}, else: {:ok, response.content, ctx}
+
+      {:error, reason} ->
+        {:error, reason, ctx}
     end
   end
 

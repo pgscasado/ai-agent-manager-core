@@ -169,6 +169,25 @@ defmodule AgentManagerWeb.ApiTest do
              conn |> get("/debug/language", %{"text" => "oi"}) |> json_response(200)
   end
 
+  test "tools: list, per-bot selection, MCP status", %{conn: conn} do
+    tools = conn |> get("/tools") |> json_response(200)
+
+    assert %{"id" => "local:current_time", "name" => "current_time", "source" => "local"} =
+             Enum.find(tools, &(&1["id"] == "local:current_time"))
+
+    %{"id" => id} = conn |> post("/bot", %{"name" => "x"}) |> json_response(200)
+
+    assert %{"tools" => ["local:*"], "resolved" => resolved} =
+             conn |> patch("/bot/#{id}/tools", %{"tools" => ["local:*"]}) |> json_response(200)
+
+    assert "local:search_knowledge" in resolved
+
+    assert %{"message" => "tools must be a list of strings"} =
+             conn |> patch("/bot/#{id}/tools", %{"tools" => "all"}) |> json_response(400)
+
+    assert is_list(conn |> get("/mcp/servers") |> json_response(200))
+  end
+
   test "the bot channel streams that bot's events", %{conn: conn} do
     %{"id" => id} = conn |> post("/bot", %{"name" => "x"}) |> json_response(200)
 

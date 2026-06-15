@@ -320,14 +320,27 @@ defmodule AgentManager.Pipelines.Answer.Steps do
   end
 
   defmodule Generate do
-    @moduledoc "Calls the bot's model in JSON mode and parses the answer object."
+    @moduledoc """
+    Calls the bot's model in JSON mode and parses the answer object.
+
+    When the bot has tools (`model_config.tools`), this runs the tool loop:
+    the model may ask for tools, they run concurrently, their results go back
+    to the model, and so on - up to `:max_tool_rounds` rounds, after which the
+    model is told to answer with what it has. Each call publishes
+    `tool.called` / `tool.completed`.
+    """
     use AgentManager.Pipeline.Step
-    alias AgentManager.Answer
+    alias AgentManager.{Answer, Tools}
     alias AgentManager.Pipelines.Answer.Helpers
 
+    @default_rounds 5
+
     @impl true
-    def call(ctx, _opts) do
-      with {:ok, content, ctx} <- Helpers.chat(ctx, Context.get(ctx, :messages), json: true) do
+    def call(ctx, opts) do
+      specs = Tools.for_bot(ctx.bot)
+      rounds = opts[:max_tool_rounds] || @default_rounds
+
+      with {:ok, content, ctx} <- loop(ctx, Context.get(ctx, :messages), specs, rounds) do
         case AgentManager.JSON.decode_object(content) do
           {:ok, %{"response" => response} = parsed} when is_binary(response) ->
             {:ok, Context.assign(ctx, parsed: parsed)}
@@ -337,6 +350,75 @@ defmodule AgentManager.Pipelines.Answer.Steps do
             {:ok, Context.assign(ctx, parsed: %{"response" => String.trim(content)})}
         end
       end
+    end
+
+    defp loop(ctx, messages, [], _rounds) do
+      Helpers.chat(ctx, messages, json: true)
+    end
+
+    defp loop(ctx, messages, specs, rounds_left) do
+      tools = Tools.definitions(specs)
+
+      messages =
+        if rounds_left == 0,
+          do:
+            messages ++
+              [
+                %{
+                  role: :system,
+                  content:
+                    "Tool budget exhausted: do not call tools again. Answer now with the information you have."
+                }
+              ],
+          else: messages
+
+      with {:ok, response, ctx} <-
+             Helpers.chat(ctx, messages, json: true, tools: tools, full: true) do
+        case response.tool_calls do
+          [] ->
+            {:ok, response.content, ctx}
+
+          _calls when rounds_left == 0 ->
+            {:error, :tool_rounds_exhausted, ctx}
+
+          calls ->
+            {results, ctx} = run_tools(ctx, calls, specs)
+
+            messages =
+              messages ++
+                [%{role: :assistant, content: response.content, tool_calls: calls}] ++
+                Enum.map(results, fn r ->
+                  %{
+                    role: :tool,
+                    tool_call_id: r.call.id,
+                    name: r.call.name,
+                    content: r.content,
+                    is_error: r.is_error
+                  }
+                end)
+
+            loop(ctx, messages, specs, rounds_left - 1)
+        end
+      end
+    end
+
+    defp run_tools(ctx, calls, specs) do
+      for call <- calls,
+          do: Context.publish(ctx, "tool.called", %{tool: call.name, arguments: call.arguments})
+
+      results = Tools.execute_all(calls, specs, ctx)
+
+      for r <- results do
+        Context.publish(ctx, "tool.completed", %{
+          tool: r.call.name,
+          id: r.spec && r.spec.id,
+          is_error: r.is_error,
+          duration_ms: r.duration_ms
+        })
+      end
+
+      used = Enum.map(results, &((&1.spec && &1.spec.id) || &1.call.name))
+      {results, Context.assign(ctx, :tools_used, Context.get(ctx, :tools_used, []) ++ used)}
     end
 
     @doc "Used as `on_error: {:recover, ...}`: apologise and hand off to a human."
@@ -446,6 +528,12 @@ defmodule AgentManager.Pipelines.Answer.Steps do
             }
 
             ask_for_attendant(answer, ctx)
+        end
+
+      answer =
+        case Context.get(ctx, :tools_used, []) do
+          [] -> answer
+          used -> %{answer | metadata: Map.put(answer.metadata, :tools_used, Enum.uniq(used))}
         end
 
       {:ok, Context.put_result(ctx, answer)}

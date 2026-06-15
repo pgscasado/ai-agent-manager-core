@@ -23,6 +23,25 @@ defmodule AgentManagerWeb.SystemController do
     json(conn, %{answer: names(Answer.steps()), training: names(Training.steps())})
   end
 
+  def tools(conn, _params) do
+    json(
+      conn,
+      Enum.map(AgentManager.Tools.available(), fn spec ->
+        %{
+          id: spec.id,
+          name: spec.name,
+          description: spec.description,
+          input_schema: spec.input_schema,
+          source: elem(spec.source, 0)
+        }
+      end)
+    )
+  end
+
+  def mcp_servers(conn, _params) do
+    json(conn, Enum.map(AgentManager.MCP.servers(), &Map.delete(&1, :pid)))
+  end
+
   defp names(steps) do
     steps
     |> Pipeline.names()

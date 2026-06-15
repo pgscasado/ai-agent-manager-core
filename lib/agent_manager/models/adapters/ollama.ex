@@ -14,7 +14,7 @@ defmodule AgentManager.Models.Adapters.Ollama do
       %{
         model: opts[:model],
         stream: false,
-        messages: Enum.map(messages, &%{role: to_string(&1.role), content: &1.content}),
+        messages: Enum.map(messages, &encode_message/1),
         options:
           Map.reject(
             %{temperature: opts[:temperature], top_p: opts[:top_p]},
@@ -22,16 +22,55 @@ defmodule AgentManager.Models.Adapters.Ollama do
           )
       }
       |> then(&if(opts[:json], do: Map.put(&1, :format, "json"), else: &1))
+      |> then(
+        &if(opts[:tools] in [nil, []],
+          do: &1,
+          else: Map.put(&1, :tools, encode_tools(opts[:tools]))
+        )
+      )
 
-    with {:ok, %{"message" => %{"content" => content}} = raw} <- post("/api/chat", body, opts) do
+    with {:ok, %{"message" => message} = raw} <- post("/api/chat", body, opts) do
       {:ok,
        %{
-         content: content,
+         content: message["content"] || "",
+         # Ollama does not id its tool calls; ids only need to be unique per turn.
+         tool_calls:
+           (message["tool_calls"] || [])
+           |> Enum.with_index()
+           |> Enum.map(fn {%{"function" => f}, i} ->
+             %{
+               id: "call_#{i}",
+               name: f["name"],
+               arguments: ChatModel.decode_arguments(f["arguments"])
+             }
+           end),
          usage: ChatModel.usage(raw["prompt_eval_count"], raw["eval_count"]),
          model: opts[:model],
          raw: raw
        }}
     end
+  end
+
+  defp encode_message(%{role: :assistant, tool_calls: [_ | _] = calls} = m) do
+    %{
+      role: "assistant",
+      content: m[:content] || "",
+      tool_calls: Enum.map(calls, &%{function: %{name: &1.name, arguments: &1.arguments}})
+    }
+  end
+
+  defp encode_message(%{role: :tool} = m),
+    do: %{role: "tool", content: m.content, tool_name: m.name}
+
+  defp encode_message(m), do: %{role: to_string(m.role), content: m.content}
+
+  defp encode_tools(tools) do
+    Enum.map(tools, fn tool ->
+      %{
+        type: "function",
+        function: %{name: tool.name, description: tool.description, parameters: tool.input_schema}
+      }
+    end)
   end
 
   @impl AgentManager.Models.EmbeddingModel

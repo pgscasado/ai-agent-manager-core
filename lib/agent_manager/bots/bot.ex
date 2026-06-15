@@ -61,6 +61,8 @@ defmodule AgentManager.Bots.Bot.ModelConfig do
     field :temperature, :float, default: 0.4
     field :message_buffer, :integer, default: 5
     field :api_keys, :map, default: %{}, redact: true
+    # tool ids or globs this bot may call, e.g. ["local:*", "mcp:crm/*"]
+    field :tools, {:array, :string}, default: []
     embeds_one :content, AgentManager.Bots.Bot.Content, on_replace: :update
   end
 
@@ -72,7 +74,8 @@ defmodule AgentManager.Bots.Bot.ModelConfig do
       :embedding_model,
       :temperature,
       :message_buffer,
-      :api_keys
+      :api_keys,
+      :tools
     ])
     |> validate_number(:temperature, greater_than_or_equal_to: 0, less_than_or_equal_to: 2)
     |> cast_embed(:content)

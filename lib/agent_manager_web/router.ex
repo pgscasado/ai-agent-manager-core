@@ -24,6 +24,7 @@ defmodule AgentManagerWeb.Router do
         get "/:id/prompt_token_limit", BotController, :prompt_token_limit
         post "/:id/paraphrase", BotController, :paraphrase
         patch "/:id/models", BotController, :update_models
+        patch "/:id/tools", BotController, :update_tools
         patch "/:id/job_timings", BotController, :job_timings
 
         patch "/:id/temperature/:value", BotController, :patch_model_field,
@@ -71,6 +72,8 @@ defmodule AgentManagerWeb.Router do
 
       get "/models", SystemController, :models
       get "/pipelines", SystemController, :pipelines
+      get "/tools", SystemController, :tools
+      get "/mcp/servers", SystemController, :mcp_servers
     end
   end
 end

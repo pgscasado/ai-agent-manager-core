@@ -16,27 +16,69 @@ defmodule AgentManager.Models.Adapters.OpenAI do
     body =
       %{
         model: opts[:model],
-        messages: Enum.map(messages, &%{role: to_string(&1.role), content: &1.content}),
+        messages: Enum.map(messages, &encode_message/1),
         temperature: opts[:temperature],
         top_p: opts[:top_p],
         frequency_penalty: opts[:frequency_penalty],
-        max_tokens: opts[:max_tokens]
+        max_tokens: opts[:max_tokens],
+        tools: encode_tools(opts[:tools])
       }
       |> maybe_json(opts[:json])
       |> reject_nil()
 
-    with {:ok, %{"choices" => [%{"message" => %{"content" => content}} | _]} = raw} <-
+    with {:ok, %{"choices" => [%{"message" => message} | _]} = raw} <-
            post("/chat/completions", body, opts) do
       usage = raw["usage"] || %{}
 
       {:ok,
        %{
-         content: content || "",
+         content: message["content"] || "",
+         tool_calls: Enum.map(message["tool_calls"] || [], &decode_tool_call/1),
          usage: ChatModel.usage(usage["prompt_tokens"], usage["completion_tokens"]),
          model: raw["model"] || opts[:model],
          raw: raw
        }}
     end
+  end
+
+  defp encode_message(%{role: :assistant, tool_calls: [_ | _] = calls} = m) do
+    %{
+      role: "assistant",
+      content: m[:content],
+      tool_calls:
+        Enum.map(calls, fn call ->
+          %{
+            id: call.id,
+            type: "function",
+            function: %{name: call.name, arguments: Jason.encode!(call.arguments)}
+          }
+        end)
+    }
+  end
+
+  defp encode_message(%{role: :tool} = m),
+    do: %{role: "tool", tool_call_id: m.tool_call_id, content: m.content}
+
+  defp encode_message(m), do: %{role: to_string(m.role), content: m.content}
+
+  defp encode_tools(nil), do: nil
+  defp encode_tools([]), do: nil
+
+  defp encode_tools(tools) do
+    Enum.map(tools, fn tool ->
+      %{
+        type: "function",
+        function: %{name: tool.name, description: tool.description, parameters: tool.input_schema}
+      }
+    end)
+  end
+
+  defp decode_tool_call(%{"id" => id, "function" => function}) do
+    %{
+      id: id,
+      name: function["name"],
+      arguments: ChatModel.decode_arguments(function["arguments"])
+    }
   end
 
   @impl AgentManager.Models.EmbeddingModel

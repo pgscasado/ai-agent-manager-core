@@ -18,6 +18,10 @@ defmodule AgentManager.Application do
       │   ├── Registry bot_id -> running job (lets a restarted coordinator adopt jobs)
       │   ├── Task.Supervisor - training jobs
       │   └── Training.Coordinator - queue + concurrency limit
+      ├── AgentManager.MCP.Root (rest_for_one)
+      │   ├── Registry server name -> client (value: status + tool list)
+      │   ├── DynamicSupervisor - one MCP.Client per server
+      │   └── Task - starts the configured servers at boot
       └── AgentManagerWeb.Endpoint
 
   Handlers start before anything that publishes, so no event is missed at boot.
@@ -45,6 +49,11 @@ defmodule AgentManager.Application do
             {Registry, keys: :unique, name: AgentManager.Training.Registry},
             {Task.Supervisor, name: AgentManager.Training.TaskSupervisor},
             AgentManager.Training.Coordinator
+          ]),
+          supervisor(AgentManager.MCP.Root, [
+            {Registry, keys: :unique, name: AgentManager.MCP.Registry},
+            {DynamicSupervisor, name: AgentManager.MCP.Supervisor, strategy: :one_for_one},
+            {Task, &AgentManager.MCP.start_configured/0}
           ]),
           AgentManagerWeb.Endpoint
         ]

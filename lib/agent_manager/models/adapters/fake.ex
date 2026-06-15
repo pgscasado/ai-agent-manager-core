@@ -7,6 +7,10 @@ defmodule AgentManager.Models.Adapters.Fake do
 
       Fake.set_responder(fn messages, opts -> {:ok, ~s({"response": "hi"})} end)
 
+  A responder may also ask for tools (`opts[:tools]` holds what is offered):
+
+      {:ok, %{content: "", tool_calls: [%{id: "1", name: "add", arguments: %{"a" => 2}}]}}
+
   The responder is global (stored in `:persistent_term`), because pipeline
   steps run in other processes than the test; tests that set it must be
   `async: false` and call `Fake.reset/0`.
@@ -32,20 +36,28 @@ defmodule AgentManager.Models.Adapters.Fake do
     responder = :persistent_term.get(@key, &default_responder/2)
 
     case responder.(messages, opts) do
-      {:ok, content} ->
-        prompt_tokens = messages |> Enum.map(&String.length(&1.content)) |> Enum.sum() |> div(4)
+      {:ok, content} when is_binary(content) ->
+        {:ok, response(messages, content, [], opts)}
 
-        {:ok,
-         %{
-           content: content,
-           usage: ChatModel.usage(prompt_tokens, div(String.length(content), 4)),
-           model: opts[:model],
-           raw: nil
-         }}
+      {:ok, %{} = reply} ->
+        {:ok, response(messages, reply[:content] || "", reply[:tool_calls] || [], opts)}
 
       {:error, _} = error ->
         error
     end
+  end
+
+  defp response(messages, content, tool_calls, opts) do
+    prompt_tokens =
+      messages |> Enum.map(&String.length(&1[:content] || "")) |> Enum.sum() |> div(4)
+
+    %{
+      content: content,
+      tool_calls: tool_calls,
+      usage: ChatModel.usage(prompt_tokens, div(String.length(content), 4) + length(tool_calls)),
+      model: opts[:model],
+      raw: nil
+    }
   end
 
   defp default_responder(messages, opts) do
