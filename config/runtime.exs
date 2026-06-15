@@ -24,7 +24,7 @@ config :agent_manager, AgentManagerWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
 # Default models can be chosen per deployment, e.g. a Gemini-only setup:
-#   DEFAULT_CHAT_MODEL=gemini:gemini-2.5-flash DEFAULT_EMBEDDING_MODEL=gemini:gemini-embedding-001
+#   DEFAULT_CHAT_MODEL=gemini:gemini-3.8-flash DEFAULT_EMBEDDING_MODEL=gemini:gemini-embedding-001
 # (bots that set their own models are unaffected).
 model_defaults =
   for {key, var} <- [

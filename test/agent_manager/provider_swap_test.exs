@@ -122,7 +122,7 @@ defmodule AgentManager.ProviderSwapTest do
 
   test "one conversation moves across Gemini, OpenAI and Anthropic", %{bot: bot} do
     # 1. Gemini, with the bot's own key
-    bot = use_model(bot, "gemini:gemini-2.5-flash", %{"gemini" => "bot-gemini-key"})
+    bot = use_model(bot, "gemini:gemini-3.8-flash", %{"gemini" => "bot-gemini-key"})
 
     assert {:ok, %{response: "gemini answered"}, _} =
              Conversations.ask(bot, "u", "Quais formas de pagamento?")
@@ -130,7 +130,7 @@ defmodule AgentManager.ProviderSwapTest do
     assert_receive {:wire, "gemini", "/v1beta/openai/chat/completions", ["Bearer bot-gemini-key"],
                     req}
 
-    assert req["model"] == "gemini-2.5-flash"
+    assert req["model"] == "gemini-3.8-flash"
     assert req["response_format"] == %{"type" => "json_object"}
     assert hd(req["messages"])["content"] =~ "pix"
 
@@ -158,7 +158,7 @@ defmodule AgentManager.ProviderSwapTest do
     # Usage is recorded the same way whoever answered.
     wait_until(fn -> length(Store.Memory.llm_calls()) >= 3 end)
     models = Store.Memory.llm_calls() |> Enum.map(& &1.model) |> Enum.uniq() |> Enum.sort()
-    assert models == ["anthropic:claude-opus-5", "gemini:gemini-2.5-flash", "openai:gpt-4o"]
+    assert models == ["anthropic:claude-opus-5", "gemini:gemini-3.8-flash", "openai:gpt-4o"]
     wait_until(fn -> Bots.get(bot.id).total_tokens == 110 + 110 + 132 end)
   end
 
@@ -171,7 +171,7 @@ defmodule AgentManager.ProviderSwapTest do
     assert_receive {:wire, "anthropic", "/v1/messages", [""], _}
 
     # the conversation keeps working once the bot points at a usable provider
-    bot = use_model(bot, "gemini:gemini-2.5-flash", %{})
+    bot = use_model(bot, "gemini:gemini-3.8-flash", %{})
 
     assert {:ok, %{response: "gemini answered", error: false}, _} =
              Conversations.ask(bot, "u", "Oi de novo?")
