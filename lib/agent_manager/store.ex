@@ -37,7 +37,12 @@ defmodule AgentManager.Store do
   def impl, do: Application.get_env(:agent_manager, :store, AgentManager.Store.Ecto)
 
   @doc false
-  def uuid?(value), do: match?({:ok, _}, Ecto.UUID.cast(value))
+  # Only the canonical text form: Ecto.UUID.cast/1 also accepts any 16-byte
+  # binary as a raw UUID, which made 16-character identifiers look like ids.
+  def uuid?(value) when is_binary(value) and byte_size(value) == 36,
+    do: match?({:ok, _}, Ecto.UUID.cast(value))
+
+  def uuid?(_value), do: false
 end
 
 defmodule AgentManager.VectorStore do

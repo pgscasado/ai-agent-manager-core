@@ -1,9 +1,11 @@
 import Config
 
-# Local secrets: in dev/test, KEY=VALUE lines from a gitignored `.env` are
-# exported before any other config is read (see `.env.example`). Variables
-# already set in the shell win. Production reads real environment variables only.
-if config_env() != :prod and File.exists?(Path.expand("../.env", __DIR__)) do
+# Local secrets: in dev, KEY=VALUE lines from a gitignored `.env` are exported
+# before any other config is read (see `.env.example`). Variables already set
+# in the shell win. Tests never read it (a developer's models, tokens and
+# WhatsApp secret would leak into them); production reads real environment
+# variables only.
+if config_env() == :dev and File.exists?(Path.expand("../.env", __DIR__)) do
   for line <- File.stream!(Path.expand("../.env", __DIR__)),
       line = String.trim(line),
       line != "" and not String.starts_with?(line, "#"),
