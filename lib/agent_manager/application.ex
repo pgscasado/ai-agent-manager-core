@@ -127,7 +127,13 @@ defmodule AgentManager.Events.Supervisor do
 
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
 
-  def handlers, do: Application.get_env(:agent_manager, __MODULE__, [])[:handlers] || @default
+  def handlers do
+    handlers = Application.get_env(:agent_manager, __MODULE__, [])[:handlers] || @default
+    trace = AgentManager.Handlers.LiveTrace
+
+    # LIVE_TRACE=true prints events on the console
+    if trace.enabled?() and trace not in handlers, do: handlers ++ [trace], else: handlers
+  end
 
   @impl true
   def init(_opts),

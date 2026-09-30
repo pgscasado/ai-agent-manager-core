@@ -78,6 +78,12 @@ if whatsapp != [] do
   config :agent_manager, AgentManager.WhatsApp, whatsapp
 end
 
+# LIVE_TRACE=true prints what happens inside on the console, live: WhatsApp
+# messages in and out, pipeline steps, model and tool calls, training.
+if System.get_env("LIVE_TRACE") in ~w(true 1) do
+  config :agent_manager, AgentManager.Handlers.LiveTrace, enabled: true
+end
+
 # SHOWCASE_SEED=true creates (and trains) the ready-made showcase bots at boot.
 if System.get_env("SHOWCASE_SEED") in ~w(true 1) do
   config :agent_manager, AgentManager.Showcase, seed_on_boot: true

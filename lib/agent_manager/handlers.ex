@@ -86,9 +86,12 @@ defmodule AgentManager.Handlers.EventLogger do
   def handle_event(%{type: "pipeline.step.completed"}, state), do: {:ok, state}
 
   def handle_event(event, state) do
-    Logger.debug(fn ->
-      "[event] #{event.type} bot=#{event.bot_id} correlation=#{event.correlation_id}"
-    end)
+    # the live trace already prints every event, in more detail
+    unless AgentManager.Handlers.LiveTrace.enabled?() do
+      Logger.debug(fn ->
+        "[event] #{event.type} bot=#{event.bot_id} correlation=#{event.correlation_id}"
+      end)
+    end
 
     {:ok, state}
   end

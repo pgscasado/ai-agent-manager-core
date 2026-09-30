@@ -413,7 +413,9 @@ defmodule AgentManager.Pipelines.Answer.Steps do
           tool: r.call.name,
           id: r.spec && r.spec.id,
           is_error: r.is_error,
-          duration_ms: r.duration_ms
+          duration_ms: r.duration_ms,
+          # a preview, for traces and dashboards
+          result: String.slice(to_string(r.content), 0, 500)
         })
       end
 

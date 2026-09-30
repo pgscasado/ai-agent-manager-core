@@ -30,6 +30,12 @@ defmodule AgentManager.Events do
   | `training.completed`          | `Training.Job`         | `stats, duration_ms, content`          |
   | `training.failed`             | `Training.Job`         | `errors, duration_ms, content`         |
   | `bot.created/updated/deleted` | `Bots`                 | `bot`                                  |
+  | `tool.called`                 | `Generate` step        | `tool, arguments`                      |
+  | `tool.completed`              | `Generate` step        | `tool, id, is_error, duration_ms, result` (preview) |
+  | `whatsapp.received`           | `Showcase.Session`     | `from, name, type, text, reply_id, filename, state` |
+  | `whatsapp.sent`               | `Showcase.Session`     | `to, summary`                          |
+  | `whatsapp.send_failed`        | `Showcase.Session`     | `to, summary, reason`                  |
+  | `showcase.state`              | `Showcase.Session`     | `from, from_state, to_state, bot`      |
   """
 
   alias AgentManager.Events.Event
