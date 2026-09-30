@@ -17,6 +17,12 @@ config :agent_manager, AgentManager.Models,
 
 config :agent_manager, AgentManager.Handlers.Webhooks, endpoints: []
 
+# WhatsApp messages go to an in-memory outbox (see test/support).
+config :agent_manager, AgentManager.WhatsApp,
+  client: AgentManager.WhatsApp.TestClient,
+  app_secret: "test-app-secret",
+  verify_token: "test-verify-token"
+
 config :agent_manager, AgentManagerWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "CRIudYVcdSoO9mP4mZA1jb4CGQXnkVQpxrxs5mLsRjOeB2IMFG/Sh/bXfrZzy3PA",

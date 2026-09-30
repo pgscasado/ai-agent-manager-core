@@ -17,15 +17,20 @@ defmodule AgentManager.Store.Memory do
   @messages :memory_messages
   @calls :memory_llm_calls
   @segments :memory_segments
+  # owned here for AgentManager.KV.Memory
+  @kv :memory_kv
+  @counters :memory_counters
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
 
   @doc "Empties every table (tests)."
-  def reset, do: Enum.each([@bots, @messages, @calls, @segments], &:ets.delete_all_objects/1)
+  def reset,
+    do:
+      Enum.each([@bots, @messages, @calls, @segments, @kv, @counters], &:ets.delete_all_objects/1)
 
   @impl GenServer
   def init(:ok) do
-    for table <- [@bots, @messages, @calls, @segments] do
+    for table <- [@bots, @messages, @calls, @segments, @kv, @counters] do
       :ets.new(table, [
         :named_table,
         :public,

@@ -3,6 +3,33 @@ defmodule AgentManagerWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug AgentManagerWeb.Plugs.ApiAuth, required: false
+  end
+
+  pipeline :admin do
+    plug :accepts, ["json"]
+    plug AgentManagerWeb.Plugs.ApiAuth, required: true
+  end
+
+  # Meta calls this without our token; POSTs are verified by signature instead.
+  pipeline :webhook do
+    plug :accepts, ["json"]
+  end
+
+  scope "/whatsapp", AgentManagerWeb do
+    pipe_through :webhook
+    get "/webhook", WhatsAppController, :verify
+    post "/webhook", WhatsAppController, :receive
+  end
+
+  scope "/admin/showcase", AgentManagerWeb do
+    pipe_through :admin
+    get "/settings", ShowcaseAdminController, :show_settings
+    put "/settings", ShowcaseAdminController, :update_settings
+    delete "/settings", ShowcaseAdminController, :reset_settings
+    get "/usage", ShowcaseAdminController, :usage
+    get "/messages", ShowcaseAdminController, :messages
+    post "/seed", ShowcaseAdminController, :seed
   end
 
   # The API is served both at the root and under /1.0.

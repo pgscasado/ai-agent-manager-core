@@ -47,6 +47,42 @@ if rpm = System.get_env("GEMINI_RPM") do
     providers: [gemini: [rate_limit: {String.to_integer(rpm), :minute}, max_retries: 3]]
 end
 
+# Thinking/reasoning for Gemini's OpenAI-compatible endpoint, e.g.
+#   GEMINI_REASONING_EFFORT=none   (no thinking tokens: cheaper, faster)
+if effort = System.get_env("GEMINI_REASONING_EFFORT") do
+  config :agent_manager, AgentManager.Models,
+    providers: [gemini: [extra_body: %{reasoning_effort: effort}]]
+end
+
+# Bearer token for the HTTP API. When set, every API route requires
+# `Authorization: Bearer <token>`; the admin routes always require it.
+if token = System.get_env("API_TOKEN") do
+  config :agent_manager, :api_token, token
+end
+
+# WhatsApp Cloud API (see README, "WhatsApp showcase").
+whatsapp =
+  for {key, var} <- [
+        token: "WHATSAPP_TOKEN",
+        phone_number_id: "WHATSAPP_PHONE_NUMBER_ID",
+        verify_token: "WHATSAPP_VERIFY_TOKEN",
+        app_secret: "WHATSAPP_APP_SECRET",
+        api_version: "WHATSAPP_API_VERSION",
+        base_url: "WHATSAPP_API_BASE"
+      ],
+      value = System.get_env(var),
+      value not in [nil, ""],
+      do: {key, value}
+
+if whatsapp != [] do
+  config :agent_manager, AgentManager.WhatsApp, whatsapp
+end
+
+# SHOWCASE_SEED=true creates (and trains) the ready-made showcase bots at boot.
+if System.get_env("SHOWCASE_SEED") in ~w(true 1) do
+  config :agent_manager, AgentManager.Showcase, seed_on_boot: true
+end
+
 # MCP servers can also be given as JSON, e.g.
 #   MCP_SERVERS='[{"name":"crm","transport":"http","url":"https://crm.example.com/mcp"}]'
 if mcp_json = System.get_env("MCP_SERVERS") do

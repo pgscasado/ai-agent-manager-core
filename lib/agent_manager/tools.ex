@@ -8,6 +8,7 @@ defmodule AgentManager.Tools do
   | source | id | model-facing name |
   |---|---|---|
   | local module | `local:current_time` | `current_time` |
+  | showcase demo API | `demo:booking_book` | `booking_book` |
   | MCP server `crm`, tool `find-customer` | `mcp:crm/find-customer` | `crm__find-customer` |
 
   Bots opt in through `model_config.tools`, a list of ids or globs:
@@ -30,12 +31,20 @@ defmodule AgentManager.Tools do
 
   @default_local [AgentManager.Tools.CurrentTime, AgentManager.Tools.SearchKnowledge]
 
-  @doc "Every tool currently available (local + ready MCP servers)."
+  # Demo APIs of the WhatsApp showcase: local modules too, but under their own
+  # "demo:" prefix so that bots allowing "local:*" don't pick them up.
+  @default_demo AgentManager.Showcase.Demo.tools()
+
+  @doc "Every tool currently available (local, demo + ready MCP servers)."
   def available do
     local =
-      for mod <- config(:local, @default_local) do
+      for {prefix, mods} <- [
+            {"local", config(:local, @default_local)},
+            {"demo", config(:demo, @default_demo)}
+          ],
+          mod <- mods do
         %Spec{
-          id: "local:" <> mod.name(),
+          id: prefix <> ":" <> mod.name(),
           name: model_name(mod.name()),
           description: mod.description(),
           input_schema: mod.input_schema(),

@@ -3,10 +3,21 @@ defmodule AgentManagerWeb.UserSocket do
 
   channel "bot:*", AgentManagerWeb.BotChannel
 
-  # No authentication yet. Put token verification here
-  # before exposing the socket publicly.
+  # Events carry message texts and user ids (WhatsApp numbers, for the
+  # showcase), so once API_TOKEN is set the socket requires it as the
+  # `token` connect param, like the HTTP API.
   @impl true
-  def connect(_params, socket, _connect_info), do: {:ok, socket}
+  def connect(params, socket, _connect_info) do
+    case Application.get_env(:agent_manager, :api_token) do
+      token when is_binary(token) and token != "" ->
+        if is_binary(params["token"]) and Plug.Crypto.secure_compare(token, params["token"]),
+          do: {:ok, socket},
+          else: :error
+
+      _ ->
+        {:ok, socket}
+    end
+  end
 
   @impl true
   def id(_socket), do: nil

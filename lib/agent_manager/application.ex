@@ -22,6 +22,10 @@ defmodule AgentManager.Application do
       │   ├── Registry server name -> client (value: status + tool list)
       │   ├── DynamicSupervisor - one MCP.Client per server
       │   └── Task - starts the configured servers at boot
+      ├── AgentManager.Showcase.Root (rest_for_one)  - the WhatsApp showcase
+      │   ├── Registry phone -> session
+      │   ├── DynamicSupervisor - one Showcase.Session per active WhatsApp user
+      │   └── Task - seeds the ready-made bots at boot (SHOWCASE_SEED=true)
       └── AgentManagerWeb.Endpoint
 
   Handlers start before anything that publishes, so no event is missed at boot.
@@ -54,6 +58,11 @@ defmodule AgentManager.Application do
             {Registry, keys: :unique, name: AgentManager.MCP.Registry},
             {DynamicSupervisor, name: AgentManager.MCP.Supervisor, strategy: :one_for_one},
             {Task, &AgentManager.MCP.start_configured/0}
+          ]),
+          supervisor(AgentManager.Showcase.Root, [
+            {Registry, keys: :unique, name: AgentManager.Showcase.Registry},
+            {DynamicSupervisor, name: AgentManager.Showcase.Supervisor, strategy: :one_for_one},
+            {Task, &AgentManager.Showcase.Seeds.run_on_boot/0}
           ]),
           AgentManagerWeb.Endpoint
         ]

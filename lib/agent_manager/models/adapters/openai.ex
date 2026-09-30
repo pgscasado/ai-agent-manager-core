@@ -25,6 +25,8 @@ defmodule AgentManager.Models.Adapters.OpenAI do
       }
       |> maybe_json(opts[:json])
       |> reject_nil()
+      # provider-specific fields, e.g. `extra_body: %{reasoning_effort: "none"}`
+      |> Map.merge(opts[:extra_body] || %{})
 
     with {:ok, %{"choices" => [%{"message" => message} | _]} = raw} <-
            post("/chat/completions", body, opts) do
