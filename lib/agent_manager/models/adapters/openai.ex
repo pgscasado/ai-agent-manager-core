@@ -23,9 +23,12 @@ defmodule AgentManager.Models.Adapters.OpenAI do
         max_tokens: opts[:max_tokens],
         tools: encode_tools(opts[:tools])
       }
-      |> maybe_json(opts[:json])
+      # JSON mode only without tools: Gemini ignores tool results while JSON
+      # output is forced and keeps calling the tool. With tools, the prompt asks
+      # for JSON and callers parse leniently (as with Ollama).
+      |> maybe_json(opts[:json] && opts[:tools] in [nil, []])
       |> reject_nil()
-      # provider-specific fields, e.g. `extra_body: %{reasoning_effort: "none"}`
+      # provider-specific fields, e.g. `extra_body: %{reasoning_effort: "minimal"}`
       |> Map.merge(opts[:extra_body] || %{})
 
     with {:ok, %{"choices" => [%{"message" => message} | _]} = raw} <-

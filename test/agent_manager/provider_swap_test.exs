@@ -215,12 +215,15 @@ defmodule AgentManager.ProviderSwapTest do
       model: "gemini-3.5-flash-lite",
       api_key: "k",
       req_options: [plug: {Req.Test, :signature_wire}],
-      tools: [%{name: "booking_available_slots", description: "slots", input_schema: %{}}]
+      tools: [%{name: "booking_available_slots", description: "slots", input_schema: %{}}],
+      json: true
     ]
 
     user = [%{role: :user, content: "slots?"}]
     {:ok, %{tool_calls: [call]}} = OpenAI.chat(user, opts)
-    assert_receive {:request, _first}
+    assert_receive {:request, first}
+    # with tools, JSON output isn't forced (Gemini would keep calling the tool)
+    refute Map.has_key?(first, "response_format")
 
     followup =
       user ++

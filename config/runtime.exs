@@ -47,8 +47,11 @@ if rpm = System.get_env("GEMINI_RPM") do
     providers: [gemini: [rate_limit: {String.to_integer(rpm), :minute}, max_retries: 3]]
 end
 
-# Thinking/reasoning for Gemini's OpenAI-compatible endpoint, e.g.
-#   GEMINI_REASONING_EFFORT=none   (no thinking tokens: cheaper, faster)
+# Thinking/reasoning for Gemini's OpenAI-compatible endpoint (thinking tokens
+# are billed as output), e.g.
+#   GEMINI_REASONING_EFFORT=minimal
+# Gemini 3 models can't turn thinking off: "none" is rejected with HTTP 400
+# there (it's only valid for Gemini 2.5 Flash / Flash-Lite).
 if effort = System.get_env("GEMINI_REASONING_EFFORT") do
   config :agent_manager, AgentManager.Models,
     providers: [gemini: [extra_body: %{reasoning_effort: effort}]]
