@@ -11,7 +11,10 @@ defmodule AgentManagerWeb.Endpoint do
     same_site: "Lax"
   ]
 
-  socket "/socket", AgentManagerWeb.UserSocket, websocket: true, longpoll: false
+  # peer_data + x_headers give the client IP for the token lockout
+  socket "/socket", AgentManagerWeb.UserSocket,
+    websocket: [connect_info: [:peer_data, :x_headers]],
+    longpoll: false
 
   # socket "/live", Phoenix.LiveView.Socket,
   #   websocket: [connect_info: [session: @session_options]],

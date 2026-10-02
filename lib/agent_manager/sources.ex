@@ -125,12 +125,40 @@ defmodule AgentManager.Sources do
     end
   end
 
+  defmodule Zip do
+    @moduledoc """
+    Unzips in memory after checking the entries' declared uncompressed sizes,
+    so a small upload can't expand into gigabytes (a zip bomb). Sizes come
+    from the zip's directory: this stops ordinary bombs, not a crafted file
+    that lies about them.
+    """
+
+    @max_bytes 50_000_000
+
+    def unzip(body, opts \\ [], max_bytes \\ @max_bytes) do
+      wanted = opts[:file_list]
+
+      with {:ok, entries} <- :zip.list_dir(body) do
+        size =
+          for {:zip_file, name, info, _comment, _offset, _compressed} <- entries,
+              is_nil(wanted) or name in wanted,
+              reduce: 0,
+              do: (acc -> acc + elem(info, 1))
+
+        if size > max_bytes,
+          do: {:error, :too_large},
+          else: :zip.unzip(body, [:memory | opts])
+      end
+    end
+  end
+
   defmodule Docx do
     @moduledoc "Reads `word/document.xml` straight from the zip, one paragraph per block."
     @behaviour AgentManager.Sources
     @impl true
     def parse(body) do
-      with {:ok, [{_, xml}]} <- :zip.unzip(body, [:memory, file_list: [~c"word/document.xml"]]) do
+      with {:ok, [{_, xml}]} <-
+             AgentManager.Sources.Zip.unzip(body, file_list: [~c"word/document.xml"]) do
         text =
           xml
           |> String.replace(~r/<\/w:p>/, "\n\n")
@@ -140,6 +168,7 @@ defmodule AgentManager.Sources do
 
         {:ok, text}
       else
+        {:error, :too_large} -> {:error, :too_large}
         _ -> {:error, :invalid_docx}
       end
     end
@@ -152,7 +181,7 @@ defmodule AgentManager.Sources do
 
     @impl true
     def parse(body) do
-      with {:ok, files} <- :zip.unzip(body, [:memory]) do
+      with {:ok, files} <- AgentManager.Sources.Zip.unzip(body) do
         files = Map.new(files, fn {name, data} -> {to_string(name), data} end)
         shared = shared_strings(files["xl/sharedStrings.xml"])
 
@@ -178,6 +207,7 @@ defmodule AgentManager.Sources do
             {:ok, []}
         end
       else
+        {:error, :too_large} -> {:error, :too_large}
         _ -> {:error, :invalid_xlsx}
       end
     end

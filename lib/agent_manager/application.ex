@@ -42,6 +42,7 @@ defmodule AgentManager.Application do
           {DNSCluster, query: Application.get_env(:agent_manager, :dns_cluster_query) || :ignore},
           {Phoenix.PubSub, name: AgentManager.PubSub},
           {Task.Supervisor, name: AgentManager.TaskSupervisor},
+          AgentManager.RateLimit,
           AgentManager.Models.Supervisor,
           AgentManager.Events.Supervisor,
           supervisor(AgentManager.Conversations.Root, [

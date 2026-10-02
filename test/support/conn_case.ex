@@ -16,6 +16,7 @@ defmodule AgentManager.Case do
   setup do
     AgentManager.Store.Memory.reset()
     AgentManager.Models.Adapters.Fake.reset()
+    AgentManager.RateLimit.reset()
 
     # Stop conversation processes left from previous tests.
     for {_, pid, _, _} <- DynamicSupervisor.which_children(AgentManager.Conversations.Supervisor) do

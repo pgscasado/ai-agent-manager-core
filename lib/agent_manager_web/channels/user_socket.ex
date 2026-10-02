@@ -5,17 +5,14 @@ defmodule AgentManagerWeb.UserSocket do
 
   # Events carry message texts and user ids (WhatsApp numbers, for the
   # showcase), so once API_TOKEN is set the socket requires it as the
-  # `token` connect param, like the HTTP API.
+  # `token` connect param, like the HTTP API (with the same brute-force lockout).
   @impl true
-  def connect(params, socket, _connect_info) do
-    case Application.get_env(:agent_manager, :api_token) do
-      token when is_binary(token) and token != "" ->
-        if is_binary(params["token"]) and Plug.Crypto.secure_compare(token, params["token"]),
-          do: {:ok, socket},
-          else: :error
+  def connect(params, socket, connect_info) do
+    ip = AgentManagerWeb.ClientIP.from_connect_info(connect_info)
 
-      _ ->
-        {:ok, socket}
+    case AgentManagerWeb.Plugs.ApiAuth.check(params["token"], ip) do
+      :ok -> {:ok, socket}
+      :error -> :error
     end
   end
 

@@ -1,19 +1,26 @@
 defmodule AgentManagerWeb.Router do
   use AgentManagerWeb, :router
 
+  # Per-IP limits (requests per minute) run before anything else, so floods
+  # are cut before they reach auth or the database.
   pipeline :api do
     plug :accepts, ["json"]
+    plug AgentManagerWeb.Plugs.RateLimit, bucket: :api, limit: 120
     plug AgentManagerWeb.Plugs.ApiAuth, required: false
   end
 
   pipeline :admin do
     plug :accepts, ["json"]
+    plug AgentManagerWeb.Plugs.RateLimit, bucket: :admin, limit: 30
     plug AgentManagerWeb.Plugs.ApiAuth, required: true
   end
 
   # Meta calls this without our token; POSTs are verified by signature instead.
+  # Every delivery comes from Meta's servers, so the IP limit is generous; the
+  # per-number limit (messages_per_minute) applies inside the controller.
   pipeline :webhook do
     plug :accepts, ["json"]
+    plug AgentManagerWeb.Plugs.RateLimit, bucket: :webhook, limit: 600
   end
 
   scope "/whatsapp", AgentManagerWeb do

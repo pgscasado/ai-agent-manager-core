@@ -114,7 +114,9 @@ defmodule AgentManager.Models do
   `ChatModel` option.
   """
   def chat(spec, messages, opts \\ []) do
-    with {:ok, r} <- resolve(spec, opts[:kind] || :chat) do
+    # the daily budget is checked for every call, whoever makes it
+    with {:ok, r} <- resolve(spec, opts[:kind] || :chat),
+         :ok <- AgentManager.Budget.reserve_call() do
       call_opts = merge_opts(r, opts)
       meta = %{spec: r.spec, provider: r.provider}
 
@@ -127,6 +129,7 @@ defmodule AgentManager.Models do
         end)
 
       report(r, result, div(latency_us, 1000), call_opts, opts)
+      AgentManager.Budget.record(result)
       result
     end
   end

@@ -60,6 +60,14 @@ if token = System.get_env("API_TOKEN") do
   config :agent_manager, :api_token, token
 end
 
+# Reverse proxies in front of the app (comma-separated IPs, e.g. "127.0.0.1,::1"):
+# only their X-Forwarded-For is trusted for the client IP used by rate limits.
+if proxies = System.get_env("TRUSTED_PROXIES") do
+  config :agent_manager,
+         :trusted_proxies,
+         proxies |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+end
+
 # WhatsApp Cloud API (see README, "WhatsApp showcase").
 whatsapp =
   for {key, var} <- [
@@ -96,6 +104,16 @@ if mcp_json = System.get_env("MCP_SERVERS") do
 end
 
 if config_env() == :prod do
+  # Without a token the bot API (and every model call it can make) is open to
+  # anyone, so production refuses to start without one.
+  if System.get_env("API_TOKEN") in [nil, ""] do
+    raise """
+    environment variable API_TOKEN is missing.
+    It protects the HTTP API, the admin routes and /socket. Generate one with:
+    mix phx.gen.secret 32
+    """
+  end
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """
