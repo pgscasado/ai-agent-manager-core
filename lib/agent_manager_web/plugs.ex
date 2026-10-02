@@ -158,7 +158,7 @@ defmodule AgentManagerWeb.Plugs.CacheBodyReader do
     case Plug.Conn.read_body(conn, opts) do
       {status, body, conn} when status in [:ok, :more] ->
         conn =
-          if String.starts_with?(conn.request_path, "/whatsapp"),
+          if String.starts_with?(conn.request_path, ["/whatsapp", "/channels/whatsapp"]),
             do: Plug.Conn.assign(conn, :raw_body, (conn.assigns[:raw_body] || "") <> body),
             else: conn
 

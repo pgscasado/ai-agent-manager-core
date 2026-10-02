@@ -32,9 +32,9 @@ defmodule AgentManager.Events do
   | `bot.created/updated/deleted` | `Bots`                 | `bot`                                  |
   | `tool.called`                 | `Generate` step        | `tool, arguments`                      |
   | `tool.completed`              | `Generate` step        | `tool, id, is_error, duration_ms, result` (preview) |
-  | `whatsapp.received`           | `Showcase.Session`     | `from, name, type, text, reply_id, filename, state` |
-  | `whatsapp.sent`               | `Showcase.Session`     | `to, summary`                          |
-  | `whatsapp.send_failed`        | `Showcase.Session`     | `to, summary, reason`                  |
+  | `channel.received`            | `Showcase.Session`     | `channel, from, name, type, text, reply_id, filename, state` |
+  | `channel.sent`                | `Showcase.Session`     | `channel, to, summary`                 |
+  | `channel.send_failed`         | `Showcase.Session`     | `channel, to, summary, reason`         |
   | `showcase.state`              | `Showcase.Session`     | `from, from_state, to_state, bot`      |
   """
 

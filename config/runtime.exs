@@ -92,6 +92,11 @@ if System.get_env("LIVE_TRACE") in ~w(true 1) do
   config :agent_manager, AgentManager.Handlers.LiveTrace, enabled: true
 end
 
+# HTTP channel: also POST every reply to this URL (besides the outbox).
+if url = System.get_env("HTTP_CHANNEL_CALLBACK_URL") do
+  config :agent_manager, AgentManager.Channels.Http, callback_url: url
+end
+
 # SHOWCASE_SEED=true creates (and trains) the ready-made showcase bots at boot.
 if System.get_env("SHOWCASE_SEED") in ~w(true 1) do
   config :agent_manager, AgentManager.Showcase, seed_on_boot: true

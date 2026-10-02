@@ -29,6 +29,21 @@ defmodule AgentManagerWeb.Router do
     post "/webhook", WhatsAppController, :receive
   end
 
+  # Channels: each turns its webhook into a showcase message (see AgentManager.Channels).
+  scope "/channels", AgentManagerWeb do
+    scope "/whatsapp" do
+      pipe_through :webhook
+      get "/webhook", WhatsAppController, :verify
+      post "/webhook", WhatsAppController, :receive
+    end
+
+    scope "/http" do
+      pipe_through :api
+      post "/messages", HttpChannelController, :create
+      get "/messages", HttpChannelController, :index
+    end
+  end
+
   scope "/admin/showcase", AgentManagerWeb do
     pipe_through :admin
     get "/settings", ShowcaseAdminController, :show_settings

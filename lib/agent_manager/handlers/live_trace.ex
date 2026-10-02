@@ -101,7 +101,7 @@ defmodule AgentManager.Handlers.LiveTrace do
 
   # -- one-liners ----------------------------------------------------------------
 
-  defp describe("whatsapp.received", p, _bot) do
+  defp describe("channel.received", p, _bot) do
     what =
       case p.type do
         :text -> p.text
@@ -110,14 +110,16 @@ defmodule AgentManager.Handlers.LiveTrace do
         other -> dim(to_string(other))
       end
 
-    "\n#{time()} #{@bold}#{@violet}📥 #{p.from}#{@reset}" <>
+    "\n#{time()} #{@bold}#{@violet}📥 #{who(p.channel, p.from)}#{@reset}" <>
       dim("#{if p.name, do: " (#{p.name})"} [#{p.state}]") <> " #{clip(what, 300)}"
   end
 
-  defp describe("whatsapp.sent", p, _bot), do: "#{time()} #{@blue}📤 #{p.to}#{@reset} #{p.summary}"
+  defp describe("channel.sent", p, _bot),
+    do: "#{time()} #{@blue}📤 #{who(p.channel, p.to)}#{@reset} #{p.summary}"
 
-  defp describe("whatsapp.send_failed", p, _bot),
-    do: "#{time()} #{red("📤✗ #{p.to} #{p.summary}")}\n         #{red(clip(p.reason, 500))}"
+  defp describe("channel.send_failed", p, _bot),
+    do:
+      "#{time()} #{red("📤✗ #{who(p.channel, p.to)} #{p.summary}")}\n         #{red(clip(p.reason, 500))}"
 
   defp describe("showcase.state", p, _bot),
     do:
@@ -189,6 +191,10 @@ defmodule AgentManager.Handlers.LiveTrace do
         {name, %{state | bots: Map.put(bots, bot_id, name)}}
     end
   end
+
+  # WhatsApp numbers as they are; other channels prefixed (http:alice)
+  defp who("whatsapp", address), do: address
+  defp who(channel, address), do: "#{channel}:#{address}"
 
   defp line(label, text), do: "         #{@blue}#{String.pad_trailing(label, 9)}#{@reset}#{text}"
 

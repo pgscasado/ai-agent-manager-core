@@ -43,6 +43,7 @@ defmodule AgentManager.Application do
           {Phoenix.PubSub, name: AgentManager.PubSub},
           {Task.Supervisor, name: AgentManager.TaskSupervisor},
           AgentManager.RateLimit,
+          AgentManager.Channels.Http,
           AgentManager.Models.Supervisor,
           AgentManager.Events.Supervisor,
           supervisor(AgentManager.Conversations.Root, [
