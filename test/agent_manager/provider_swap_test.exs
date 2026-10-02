@@ -178,4 +178,62 @@ defmodule AgentManager.ProviderSwapTest do
 
     assert_receive {:wire, "gemini", _, ["Bearer global-gemini-key"], _}
   end
+
+  test "Gemini thought signatures on tool calls are sent back unchanged" do
+    test_pid = self()
+    signature = %{"google" => %{"thought_signature" => "c2lnbmF0dXJl"}}
+
+    Req.Test.stub(:signature_wire, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      request = Jason.decode!(body)
+      send(test_pid, {:request, request})
+
+      if Enum.any?(request["messages"], &(&1["role"] == "tool")) do
+        Req.Test.json(conn, %{"choices" => [%{"message" => %{"content" => "done"}}]})
+      else
+        Req.Test.json(conn, %{
+          "choices" => [
+            %{
+              "message" => %{
+                "content" => nil,
+                "tool_calls" => [
+                  %{
+                    "id" => "call_1",
+                    "type" => "function",
+                    "extra_content" => signature,
+                    "function" => %{"name" => "booking_available_slots", "arguments" => "{}"}
+                  }
+                ]
+              }
+            }
+          ]
+        })
+      end
+    end)
+
+    opts = [
+      model: "gemini-3.5-flash-lite",
+      api_key: "k",
+      req_options: [plug: {Req.Test, :signature_wire}],
+      tools: [%{name: "booking_available_slots", description: "slots", input_schema: %{}}]
+    ]
+
+    user = [%{role: :user, content: "slots?"}]
+    {:ok, %{tool_calls: [call]}} = OpenAI.chat(user, opts)
+    assert_receive {:request, _first}
+
+    followup =
+      user ++
+        [
+          %{role: :assistant, content: nil, tool_calls: [call]},
+          %{role: :tool, tool_call_id: "call_1", name: call.name, content: "[]"}
+        ]
+
+    {:ok, %{content: "done"}} = OpenAI.chat(followup, opts)
+    assert_receive {:request, %{"messages" => messages}}
+
+    assert [%{"tool_calls" => [sent]}] = Enum.filter(messages, &(&1["role"] == "assistant"))
+    assert sent["extra_content"] == signature
+    assert sent["id"] == "call_1" and sent["function"]["name"] == "booking_available_slots"
+  end
 end

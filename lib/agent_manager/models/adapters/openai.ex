@@ -49,11 +49,14 @@ defmodule AgentManager.Models.Adapters.OpenAI do
       content: m[:content],
       tool_calls:
         Enum.map(calls, fn call ->
-          %{
-            id: call.id,
-            type: "function",
-            function: %{name: call.name, arguments: Jason.encode!(call.arguments)}
-          }
+          # fields the provider attached to the call go back as they came - e.g.
+          # Gemini 3's thought signature (`extra_content`), without which the
+          # next request is rejected
+          Map.merge(call[:provider_fields] || %{}, %{
+            "id" => call.id,
+            "type" => "function",
+            "function" => %{name: call.name, arguments: Jason.encode!(call.arguments)}
+          })
         end)
     }
   end
@@ -75,11 +78,12 @@ defmodule AgentManager.Models.Adapters.OpenAI do
     end)
   end
 
-  defp decode_tool_call(%{"id" => id, "function" => function}) do
+  defp decode_tool_call(%{"id" => id, "function" => function} = call) do
     %{
       id: id,
       name: function["name"],
-      arguments: ChatModel.decode_arguments(function["arguments"])
+      arguments: ChatModel.decode_arguments(function["arguments"]),
+      provider_fields: Map.drop(call, ["id", "type", "function", "index"])
     }
   end
 
