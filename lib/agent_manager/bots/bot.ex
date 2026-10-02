@@ -63,6 +63,11 @@ defmodule AgentManager.Bots.Bot.ModelConfig do
     field :api_keys, :map, default: %{}, redact: true
     # tool ids or globs this bot may call, e.g. ["local:*", "mcp:crm/*"]
     field :tools, {:array, :string}, default: []
+    # Leave answers the model flagged `missing_info` out of the history (the
+    # 1.0 behaviour, so "I don't know" answers aren't repeated). Bots with
+    # multi-turn flows turn it off: models also flag clarifying questions
+    # ("which time?"), and dropping them loses what the user answered.
+    field :drop_missing_info_history, :boolean, default: true
     embeds_one :content, AgentManager.Bots.Bot.Content, on_replace: :update
   end
 
@@ -75,7 +80,8 @@ defmodule AgentManager.Bots.Bot.ModelConfig do
       :temperature,
       :message_buffer,
       :api_keys,
-      :tools
+      :tools,
+      :drop_missing_info_history
     ])
     |> validate_number(:temperature, greater_than_or_equal_to: 0, less_than_or_equal_to: 2)
     |> cast_embed(:content)

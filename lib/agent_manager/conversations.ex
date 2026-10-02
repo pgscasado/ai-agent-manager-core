@@ -19,8 +19,14 @@ defmodule AgentManager.Conversations do
   @registry AgentManager.Conversations.Registry
   @supervisor AgentManager.Conversations.Supervisor
 
-  @doc "Answers `text` from `user_id`. Returns `{:ok, %Answer{}, ctx}`."
-  def ask(%Bot{} = bot, user_id, text), do: call(bot, user_id, {:ask, bot, text}, 180_000)
+  @doc """
+  Answers `text` from `user_id`. Returns `{:ok, %Answer{}, ctx}`.
+
+  Options: `:user_name` - the user's display name (e.g. their WhatsApp
+  profile name), given to the model so it doesn't have to ask.
+  """
+  def ask(%Bot{} = bot, user_id, text, opts \\ []),
+    do: call(bot, user_id, {:ask, bot, text, opts}, 180_000)
 
   @doc "Records a message produced outside the bot (`:user` or `:bot` side)."
   def record(%Bot{} = bot, user_id, side, text, flags \\ []) when side in [:user, :bot],
@@ -112,12 +118,18 @@ defmodule AgentManager.Conversations.Server do
   defp load(state), do: state
 
   @impl true
-  def handle_call({:ask, bot, text}, _from, state) do
+  def handle_call({:ask, bot, text, opts}, _from, state) do
     state = load(state)
     publish(state, "message.received", %{text: text})
 
-    result =
-      AnswerPipeline.run(%{text: text, user_id: state.user_id, history: state.history}, bot: bot)
+    input = %{
+      text: text,
+      user_id: state.user_id,
+      history: state.history,
+      user_name: opts[:user_name]
+    }
+
+    result = AnswerPipeline.run(input, bot: bot)
 
     {reply, state} =
       case result do

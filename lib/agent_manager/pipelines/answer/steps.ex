@@ -38,9 +38,10 @@ defmodule AgentManager.Pipelines.Answer.Steps do
   defmodule PrepareHistory do
     @moduledoc """
     Builds the conversation window: drops messages older than
-    `user_history_time` minutes and answers flagged `missing_info`, collapses
-    consecutive identical answers, and keeps the last `message_buffer` turns.
-    Also derives the flags that gate the follow-up steps.
+    `user_history_time` minutes and answers flagged `missing_info` (unless the
+    bot's `drop_missing_info_history` is off), collapses consecutive identical
+    answers, and keeps the last `message_buffer` turns. Also derives the flags
+    that gate the follow-up steps.
     """
     use AgentManager.Pipeline.Step
     alias AgentManager.Pipelines.Answer.Steps
@@ -48,6 +49,9 @@ defmodule AgentManager.Pipelines.Answer.Steps do
     @impl true
     def call(%{bot: bot} = ctx, _opts) do
       buffer = (bot.model_config && bot.model_config.message_buffer) || 2
+
+      drop_missing_info? =
+        !bot.model_config or bot.model_config.drop_missing_info_history != false
 
       since =
         if bot.user_history_time in [nil, 0],
@@ -58,7 +62,8 @@ defmodule AgentManager.Pipelines.Answer.Steps do
         (ctx.input[:history] || [])
         |> Enum.filter(&(is_nil(since) or DateTime.compare(&1.inserted_at, since) != :lt))
         |> Enum.reject(
-          &(get_in(&1.response || %{}, ["metadata", "missing_info"]) in [true, "true"])
+          &(drop_missing_info? and
+              get_in(&1.response || %{}, ["metadata", "missing_info"]) in [true, "true"])
         )
         |> Enum.dedup_by(&response_text/1)
         |> Enum.take(-(buffer * 4))
@@ -301,9 +306,16 @@ defmodule AgentManager.Pipelines.Answer.Steps do
           segments -> Enum.map_join(segments, "\n---\n", &Attachments.mask(&1.segment))
         end
 
+      # who is talking, when the channel knows (e.g. a WhatsApp profile name)
+      user_line =
+        case ctx.input[:user_name] do
+          name when is_binary(name) and name != "" -> "\nThe user's name is #{name}."
+          _ -> ""
+        end
+
       messages =
         [
-          %{role: :system, content: Prompts.system(bot, context_text)},
+          %{role: :system, content: Prompts.system(bot, context_text) <> user_line},
           %{
             role: :system,
             content:
