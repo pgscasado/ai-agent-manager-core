@@ -21,6 +21,39 @@ defmodule AgentManagerWeb.CapsTest do
 
   defp hi, do: [%{role: :user, content: "hi"}]
 
+  describe "provider keys" do
+    test "a missing key fails before the call, naming the variable, without using budget" do
+      original = Application.get_env(:agent_manager, AgentManager.Models)
+
+      providers =
+        Keyword.put(original[:providers], :keyed,
+          adapter: AgentManager.Models.Adapters.Fake,
+          api_key: {:system, "AM_TEST_NO_SUCH_KEY"}
+        )
+
+      Application.put_env(
+        :agent_manager,
+        AgentManager.Models,
+        Keyword.put(original, :providers, providers)
+      )
+
+      Fake.set_responder(fn _, _ -> flunk("the provider must not be called without a key") end)
+
+      try do
+        assert {:error,
+                {:missing_api_key, "set AM_TEST_NO_SUCH_KEY (or the bot's api_keys.keyed)"}} =
+                 Models.chat("keyed:m", hi())
+
+        assert Budget.usage()["model_calls"] == 0
+        # a bot's own key is enough
+        Fake.reset()
+        assert {:ok, _} = Models.chat("keyed:m", hi(), api_keys: %{"keyed" => "bot-key"})
+      after
+        Application.put_env(:agent_manager, AgentManager.Models, original)
+      end
+    end
+  end
+
   describe "model budget (the hard cap)" do
     test "refuses calls beyond the daily call budget" do
       {:ok, _} = Settings.update(%{"limits" => %{"model_calls_daily" => 2}})

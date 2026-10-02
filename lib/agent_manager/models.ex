@@ -114,10 +114,12 @@ defmodule AgentManager.Models do
   `ChatModel` option.
   """
   def chat(spec, messages, opts \\ []) do
-    # the daily budget is checked for every call, whoever makes it
+    # a missing key fails here, before the budget or the network; the daily
+    # budget is checked for every call, whoever makes it
     with {:ok, r} <- resolve(spec, opts[:kind] || :chat),
+         call_opts = merge_opts(r, opts),
+         :ok <- check_key(r, call_opts, opts),
          :ok <- AgentManager.Budget.reserve_call() do
-      call_opts = merge_opts(r, opts)
       meta = %{spec: r.spec, provider: r.provider}
 
       {latency_us, result} =
@@ -136,9 +138,10 @@ defmodule AgentManager.Models do
 
   @doc "Embeds `texts` with the embedding model named by `spec` (default if nil)."
   def embed(spec, texts, opts \\ []) when is_list(texts) do
-    with {:ok, r} <- resolve(spec, :embedding) do
+    with {:ok, r} <- resolve(spec, :embedding),
+         call_opts = merge_opts(r, opts),
+         :ok <- check_key(r, call_opts, opts) do
       meta = %{spec: r.spec, provider: r.provider, count: length(texts)}
-      call_opts = merge_opts(r, opts)
 
       :telemetry.span([:agent_manager, :models, :embed], meta, fn ->
         result = limited(r, call_opts, fn -> r.adapter.embed(texts, call_opts) end)
@@ -285,6 +288,30 @@ defmodule AgentManager.Models do
       bot_id: opts[:bot_id],
       correlation_id: opts[:correlation_id]
     )
+  end
+
+  # Providers configured with an `api_key` need one at call time (from the
+  # environment or the bot's api_keys). Without it the provider would answer
+  # with an opaque auth error; say which variable to set instead.
+  defp check_key(%Resolved{} = r, call_opts, opts) do
+    configured =
+      Application.get_env(:agent_manager, __MODULE__, [])
+      |> Keyword.get(:providers, [])
+      |> Enum.find_value(fn {name, p} -> to_string(name) == r.provider && p[:api_key] end)
+
+    if configured && call_opts[:api_key] in [nil, ""] do
+      hint =
+        case configured do
+          {:system, var} -> "set #{var} (or the bot's api_keys.#{r.provider})"
+          _ -> "set the #{r.provider} api_key"
+        end
+
+      error = {:error, {:missing_api_key, hint}}
+      report(r, error, 0, call_opts, opts)
+      error
+    else
+      :ok
+    end
   end
 
   defp key_hint(nil), do: nil
