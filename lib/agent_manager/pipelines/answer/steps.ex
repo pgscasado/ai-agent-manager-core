@@ -427,7 +427,9 @@ defmodule AgentManager.Pipelines.Answer.Steps do
           is_error: r.is_error,
           duration_ms: r.duration_ms,
           # a preview, for traces and dashboards
-          result: String.slice(to_string(r.content), 0, 500)
+          result: String.slice(to_string(r.content), 0, 500),
+          # the whole result, for evaluations that check answers against it
+          content: to_string(r.content)
         })
       end
 

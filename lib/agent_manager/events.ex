@@ -31,7 +31,7 @@ defmodule AgentManager.Events do
   | `training.failed`             | `Training.Job`         | `errors, duration_ms, content`         |
   | `bot.created/updated/deleted` | `Bots`                 | `bot`                                  |
   | `tool.called`                 | `Generate` step        | `tool, arguments`                      |
-  | `tool.completed`              | `Generate` step        | `tool, id, is_error, duration_ms, result` (preview) |
+  | `tool.completed`              | `Generate` step        | `tool, id, is_error, duration_ms, result` (preview), `content` |
   | `channel.received`            | `Showcase.Session`     | `channel, from, name, type, text, reply_id, filename, state` |
   | `channel.sent`                | `Showcase.Session`     | `channel, to, summary`                 |
   | `channel.send_failed`         | `Showcase.Session`     | `channel, to, summary, reason`         |
