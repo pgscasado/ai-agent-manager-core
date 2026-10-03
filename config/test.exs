@@ -34,3 +34,6 @@ config :phoenix, sort_verified_routes_query_params: true
 
 # Job-timing "minutes" last 20ms in tests.
 config :agent_manager, AgentManager.Conversations.Server, minute_ms: 20
+
+# CEP lookups answer from a fixed table instead of ViaCEP (see test/support).
+config :agent_manager, AgentManager.Showcase.Demo.Cep, impl: AgentManager.Showcase.Demo.Cep.Fake

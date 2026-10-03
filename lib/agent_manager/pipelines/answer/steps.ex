@@ -434,7 +434,20 @@ defmodule AgentManager.Pipelines.Answer.Steps do
       end
 
       used = Enum.map(results, &((&1.spec && &1.spec.id) || &1.call.name))
-      {results, Context.assign(ctx, :tools_used, Context.get(ctx, :tools_used, []) ++ used)}
+
+      # what each call returned, for whoever renders the answer (e.g. a
+      # channel turning a catalog into a menu)
+      returned =
+        for r <- results,
+            do: %{tool: r.call.name, content: to_string(r.content), is_error: r.is_error}
+
+      ctx =
+        Context.assign(ctx,
+          tools_used: Context.get(ctx, :tools_used, []) ++ used,
+          tool_results: Context.get(ctx, :tool_results, []) ++ returned
+        )
+
+      {results, ctx}
     end
 
     @doc "Used as `on_error: {:recover, ...}`: apologise and hand off to a human."
