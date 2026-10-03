@@ -52,6 +52,9 @@ defmodule AgentManagerWeb.Router do
     get "/usage", ShowcaseAdminController, :usage
     get "/messages", ShowcaseAdminController, :messages
     post "/seed", ShowcaseAdminController, :seed
+    get "/stores/:bot/catalog", ShowcaseAdminController, :catalog
+    put "/stores/:bot/products", ShowcaseAdminController, :put_products
+    delete "/stores/:bot/products/:id", ShowcaseAdminController, :delete_product
   end
 
   # The API is served both at the root and under /1.0.

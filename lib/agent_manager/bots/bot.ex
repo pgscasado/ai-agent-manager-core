@@ -68,6 +68,9 @@ defmodule AgentManager.Bots.Bot.ModelConfig do
     # multi-turn flows turn it off: models also flag clarifying questions
     # ("which time?"), and dropping them loses what the user answered.
     field :drop_missing_info_history, :boolean, default: true
+    # settings of the bot's tools, one entry per capability
+    # (see AgentManager.Showcase.Demo.Config), e.g. %{"store" => %{"products" => [...]}}
+    field :tool_config, :map, default: %{}
     embeds_one :content, AgentManager.Bots.Bot.Content, on_replace: :update
   end
 
@@ -81,7 +84,8 @@ defmodule AgentManager.Bots.Bot.ModelConfig do
       :message_buffer,
       :api_keys,
       :tools,
-      :drop_missing_info_history
+      :drop_missing_info_history,
+      :tool_config
     ])
     |> validate_number(:temperature, greater_than_or_equal_to: 0, less_than_or_equal_to: 2)
     |> cast_embed(:content)
