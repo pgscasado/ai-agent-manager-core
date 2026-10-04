@@ -18,6 +18,9 @@ defmodule AgentManager.Application do
       │   ├── Registry bot_id -> running job (lets a restarted coordinator adopt jobs)
       │   ├── Task.Supervisor - training jobs
       │   └── Training.Coordinator - queue + concurrency limit
+      ├── AgentManager.QA.Root (rest_for_one)
+      │   ├── Registry bot_id -> running audit session (one per bot)
+      │   └── Task.Supervisor - audit sessions
       ├── AgentManager.MCP.Root (rest_for_one)
       │   ├── Registry server name -> client (value: status + tool list)
       │   ├── DynamicSupervisor - one MCP.Client per server
@@ -55,6 +58,10 @@ defmodule AgentManager.Application do
             {Registry, keys: :unique, name: AgentManager.Training.Registry},
             {Task.Supervisor, name: AgentManager.Training.TaskSupervisor},
             AgentManager.Training.Coordinator
+          ]),
+          supervisor(AgentManager.QA.Root, [
+            {Registry, keys: :unique, name: AgentManager.QA.Registry},
+            {Task.Supervisor, name: AgentManager.QA.TaskSupervisor}
           ]),
           supervisor(AgentManager.MCP.Root, [
             {Registry, keys: :unique, name: AgentManager.MCP.Registry},
@@ -124,7 +131,8 @@ defmodule AgentManager.Events.Supervisor do
     AgentManager.Handlers.UsageRecorder,
     AgentManager.Handlers.TrainingRecorder,
     AgentManager.Handlers.EventLogger,
-    AgentManager.Handlers.Webhooks
+    AgentManager.Handlers.Webhooks,
+    AgentManager.QA.Auditor
   ]
 
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)

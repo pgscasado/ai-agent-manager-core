@@ -79,6 +79,15 @@ defmodule AgentManagerWeb.Router do
         patch "/:id/tools", BotController, :update_tools
         patch "/:id/job_timings", BotController, :job_timings
 
+        get "/:id/qa", QAController, :show
+        put "/:id/qa", QAController, :update
+        post "/:id/qa/run", QAController, :run
+        get "/:id/qa/sessions/:seq", QAController, :session
+        get "/:id/qa/regressions", QAController, :regressions
+        get "/:id/qa/clusters", QAController, :clusters
+        post "/:id/qa/clusters", QAController, :cluster
+        get "/:id/qa/optimizations", QAController, :optimizations
+
         patch "/:id/temperature/:value", BotController, :patch_model_field,
           private: %{field: :temperature}
 
@@ -124,6 +133,7 @@ defmodule AgentManagerWeb.Router do
 
       get "/models", SystemController, :models
       get "/pipelines", SystemController, :pipelines
+      get "/qa/taxonomy", QAController, :taxonomy
       get "/tools", SystemController, :tools
       get "/mcp/servers", SystemController, :mcp_servers
     end
