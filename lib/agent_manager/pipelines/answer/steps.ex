@@ -522,7 +522,7 @@ defmodule AgentManager.Pipelines.Answer.Steps do
       greeting = truthy?(parsed["is_greeting_response"])
 
       answer =
-        Answer.new(parsed["response"],
+        Answer.new(clean(parsed["response"]),
           type: if(attachments == [], do: :default, else: :attachment),
           attachments: attachments,
           metadata: %{
@@ -582,6 +582,19 @@ defmodule AgentManager.Pipelines.Answer.Steps do
     end
 
     defp ask_for_attendant(answer, ctx), do: {answer, ctx}
+
+    @doc false
+    # What models leak into the text: line breaks escaped twice ("\\n" in the
+    # JSON, so a backslash and an "n" here), the attachment marker's
+    # placeholder, and a brace from the JSON closed inside the string.
+    def clean(text) when is_binary(text) do
+      text = text |> String.replace("\\n", "\n") |> String.replace("ANEXO(<LINK>)", "")
+      text = String.trim(text)
+      text = if String.contains?(text, "{"), do: text, else: String.trim_trailing(text, "}")
+      String.trim(text)
+    end
+
+    def clean(text), do: text
 
     defp truthy?(v), do: v in [true, "true"]
   end

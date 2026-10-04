@@ -173,6 +173,39 @@ defmodule AgentManager.ConversationsTest do
     assert second.response =~ "consultor"
   end
 
+  test "line breaks escaped twice, the ANEXO placeholder and a stray brace are cleaned", %{
+    bot: bot
+  } do
+    # in the JSON: "\\n" decodes to a backslash and an "n", which WhatsApp shows as is
+    Fake.set_responder(fn _messages, _opts ->
+      {:ok,
+       ~S|{"response": "Temos duas camisetas.\\n\\nQual você quer?\\n\\n\\n} ANEXO(<LINK>)"}|}
+    end)
+
+    assert {:ok, %{response: "Temos duas camisetas.\n\nQual você quer?"}, _ctx} =
+             Conversations.ask(bot, "u", "camisetas?")
+  end
+
+  test "the 1.0 line-break and attachment markers are only for bots that use them", %{bot: bot} do
+    {:ok, messages, _} = Conversations.preview_prompt(bot, "u", "oi")
+    [%{content: system} | _] = messages
+    refute system =~ ~s(Never omit "\\n")
+    refute system =~ "ANEXO("
+
+    {:ok, bot} =
+      Bots.update(bot, %{
+        "model_config" => %{
+          "content" => %{
+            "behavioral_rules" => ~S|Separe parágrafos com "\n". Envie ANEXO(https://x.pdf).|
+          }
+        }
+      })
+
+    {:ok, [%{content: system} | _], _} = Conversations.preview_prompt(bot, "u2", "oi")
+    assert system =~ ~s(Never omit "\\n")
+    assert system =~ ~s(Never omit "ANEXO)
+  end
+
   test "model failures produce the technical-problem handoff", %{bot: bot} do
     Fake.set_responder(fn _messages, opts ->
       if opts[:json], do: {:error, :down}, else: {:ok, "Problema técnico."}
