@@ -16,7 +16,7 @@ defmodule AgentManager.Models.Adapters.OpenAI do
     body =
       %{
         model: opts[:model],
-        messages: Enum.map(messages, &encode_message/1),
+        messages: messages |> merge_system() |> Enum.map(&encode_message/1),
         temperature: opts[:temperature],
         top_p: opts[:top_p],
         frequency_penalty: opts[:frequency_penalty],
@@ -43,6 +43,20 @@ defmodule AgentManager.Models.Adapters.OpenAI do
          model: raw["model"] || opts[:model],
          raw: raw
        }}
+    end
+  end
+
+  # One system message, as the Anthropic adapter sends. Gemini's
+  # OpenAI-compatible endpoint keeps only the last of several, so the answer
+  # prompt (rules + knowledge, then the JSON format) reached it without the
+  # rules and the knowledge.
+  defp merge_system(messages) do
+    case Enum.split_with(messages, &(&1.role == :system)) do
+      {[_, _ | _] = system, rest} ->
+        [%{role: :system, content: Enum.map_join(system, "\n\n", &(&1.content || ""))} | rest]
+
+      _ ->
+        messages
     end
   end
 

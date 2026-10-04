@@ -192,6 +192,30 @@ defmodule AgentManager.ModelsTest do
                )
     end
 
+    # Gemini's OpenAI-compatible endpoint keeps only the last system message,
+    # which cost the answer prompt its rules and knowledge
+    test "sends several system messages as one, in order" do
+      Req.Test.stub(:openai_system, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+
+        assert [%{"role" => "system", "content" => "rules\n\nformat"}, %{"role" => "user"}] =
+                 Jason.decode!(body)["messages"]
+
+        Req.Test.json(conn, %{"choices" => [%{"message" => %{"content" => "ok"}}]})
+      end)
+
+      assert {:ok, %{content: "ok"}} =
+               OpenAI.chat(
+                 [
+                   %{role: :system, content: "rules"},
+                   %{role: :system, content: "format"},
+                   %{role: :user, content: "u"}
+                 ],
+                 model: "gemini-x",
+                 req_options: [plug: {Req.Test, :openai_system}]
+               )
+    end
+
     test "embeddings keep input order" do
       Req.Test.stub(:openai_embed, fn conn ->
         Req.Test.json(conn, %{
