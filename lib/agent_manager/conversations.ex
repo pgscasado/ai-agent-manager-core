@@ -23,7 +23,8 @@ defmodule AgentManager.Conversations do
   Answers `text` from `user_id`. Returns `{:ok, %Answer{}, ctx}`.
 
   Options: `:user_name` - the user's display name (e.g. their WhatsApp
-  profile name), given to the model so it doesn't have to ask.
+  profile name), given to the model so it doesn't have to ask; `:assigns` -
+  initial pipeline assigns, e.g. `%{budget: :qa}` for an evaluation session.
   """
   def ask(%Bot{} = bot, user_id, text, opts \\ []),
     do: call(bot, user_id, {:ask, bot, text, opts}, 180_000)
@@ -129,7 +130,7 @@ defmodule AgentManager.Conversations.Server do
       user_name: opts[:user_name]
     }
 
-    result = AnswerPipeline.run(input, bot: bot)
+    result = AnswerPipeline.run(input, bot: bot, assigns: opts[:assigns] || %{})
 
     {reply, state} =
       case result do

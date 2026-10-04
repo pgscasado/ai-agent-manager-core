@@ -77,7 +77,8 @@ defmodule AgentManager.Pipeline.Context do
         _ -> %{}
       end
 
-    [api_keys: keys, bot_id: bot_id(ctx), correlation_id: ctx.id]
+    # `budget: :qa` for answers given to QA (see AgentManager.Budget)
+    [api_keys: keys, bot_id: bot_id(ctx), correlation_id: ctx.id, budget: ctx.assigns[:budget]]
   end
 
   @doc "Publishes an event correlated with this pipeline run."

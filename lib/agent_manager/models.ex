@@ -119,7 +119,7 @@ defmodule AgentManager.Models do
     with {:ok, r} <- resolve(spec, opts[:kind] || :chat),
          call_opts = merge_opts(r, opts),
          :ok <- check_key(r, call_opts, opts),
-         :ok <- AgentManager.Budget.reserve_call() do
+         :ok <- AgentManager.Budget.reserve_call(opts[:budget]) do
       meta = %{spec: r.spec, provider: r.provider}
 
       {latency_us, result} =
@@ -131,7 +131,7 @@ defmodule AgentManager.Models do
         end)
 
       report(r, result, div(latency_us, 1000), call_opts, opts)
-      AgentManager.Budget.record(result)
+      AgentManager.Budget.record(result, opts[:budget])
       result
     end
   end
