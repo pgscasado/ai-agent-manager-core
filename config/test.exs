@@ -37,3 +37,6 @@ config :agent_manager, AgentManager.Conversations.Server, minute_ms: 20
 
 # CEP lookups answer from a fixed table instead of ViaCEP (see test/support).
 config :agent_manager, AgentManager.Showcase.Demo.Cep, impl: AgentManager.Showcase.Demo.Cep.Fake
+
+# Retries of failed answers and sends wait 1s in production; 10ms in tests.
+config :agent_manager, AgentManager.Showcase.Flow, retry_ms: 10

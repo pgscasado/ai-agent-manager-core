@@ -198,3 +198,11 @@ if config_env() == :prod do
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.
 end
+
+# PHX_IP=127.0.0.1 listens on loopback only, for a reverse proxy on the same
+# host (otherwise prod listens on every interface, where a firewall must keep
+# the port closed). Last, so it wins over the prod default above.
+if ip = System.get_env("PHX_IP") do
+  {:ok, address} = ip |> String.to_charlist() |> :inet.parse_address()
+  config :agent_manager, AgentManagerWeb.Endpoint, http: [ip: address]
+end
