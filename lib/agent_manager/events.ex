@@ -32,18 +32,9 @@ defmodule AgentManager.Events do
   | `bot.created/updated/deleted` | `Bots`                 | `bot`                                  |
   | `tool.called`                 | `Generate` step        | `tool, arguments`                      |
   | `tool.completed`              | `Generate` step        | `tool, id, is_error, duration_ms, result` (preview), `content` |
-  | `channel.received`            | `Showcase.Session`     | `channel, from, name, type, text, reply_id, filename, state` |
-  | `channel.sent`                | `Showcase.Session`     | `channel, to, summary`                 |
-  | `channel.send_failed`         | `Showcase.Session`     | `channel, to, summary, reason`         |
-  | `qa.session.started`          | `QA.Session`           | `session, trigger, cases`              |
-  | `qa.session.completed`        | `QA.Session`           | `session, score, pass_rate, failures, labels` |
-  | `qa.session.failed`           | `QA.Session`           | `session, reason`                      |
-  | `qa.case.judged`              | `QA.Evaluator`         | `session, case, passed, score, labels` |
-  | `qa.improvement.proposed`     | `QA`                   | `source, rules, before, after, rationale` |
-  | `qa.improvement.applied`      | `QA` (`auto_apply`)    | `source, rules, before, after, rationale` |
-  | `qa.clusters.updated`         | `QA.Clustering`        | `sessions, clusters`                   |
-  | `qa.optimization.completed`   | `QA.Optimizer`         | `baseline, best, candidates, applied`  |
-  | `showcase.state`              | `Showcase.Session`     | `from, from_state, to_state, bot`      |
+  | `budget.exhausted`            | `Budget`               | `kind, scope`                          |
+
+  Applications built on the engine publish their own types on the same bus.
   """
 
   alias AgentManager.Events.Event

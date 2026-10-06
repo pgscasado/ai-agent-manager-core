@@ -58,7 +58,7 @@ if effort = System.get_env("GEMINI_REASONING_EFFORT") do
 end
 
 # Bearer token for the HTTP API. When set, every API route requires
-# `Authorization: Bearer <token>`; the admin routes always require it.
+# `Authorization: Bearer <token>` (and so does /socket).
 if token = System.get_env("API_TOKEN") do
   config :agent_manager, :api_token, token
 end
@@ -71,38 +71,29 @@ if proxies = System.get_env("TRUSTED_PROXIES") do
          proxies |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
 end
 
-# WhatsApp Cloud API (see README, "WhatsApp showcase").
-whatsapp =
+# The hard cap on model spend (see AgentManager.Budget): chat-model calls and
+# tokens per UTC day, every caller together; unset is unlimited. QA_* is the
+# separate budget of calls made with `budget: :qa` (evaluations).
+budget =
   for {key, var} <- [
-        token: "WHATSAPP_TOKEN",
-        phone_number_id: "WHATSAPP_PHONE_NUMBER_ID",
-        verify_token: "WHATSAPP_VERIFY_TOKEN",
-        app_secret: "WHATSAPP_APP_SECRET",
-        api_version: "WHATSAPP_API_VERSION",
-        base_url: "WHATSAPP_API_BASE"
+        {"model_calls_daily", "MODEL_CALLS_DAILY"},
+        {"model_tokens_daily", "MODEL_TOKENS_DAILY"},
+        {"qa_calls_daily", "QA_CALLS_DAILY"},
+        {"qa_tokens_daily", "QA_TOKENS_DAILY"}
       ],
       value = System.get_env(var),
       value not in [nil, ""],
-      do: {key, value}
+      into: %{},
+      do: {key, String.to_integer(value)}
 
-if whatsapp != [] do
-  config :agent_manager, AgentManager.WhatsApp, whatsapp
+if budget != %{} do
+  config :agent_manager, AgentManager.Budget, daily: budget
 end
 
-# LIVE_TRACE=true prints what happens inside on the console, live: WhatsApp
-# messages in and out, pipeline steps, model and tool calls, training.
+# LIVE_TRACE=true prints what happens inside on the console, live: messages
+# in and out, pipeline steps, model and tool calls, training.
 if System.get_env("LIVE_TRACE") in ~w(true 1) do
   config :agent_manager, AgentManager.Handlers.LiveTrace, enabled: true
-end
-
-# HTTP channel: also POST every reply to this URL (besides the outbox).
-if url = System.get_env("HTTP_CHANNEL_CALLBACK_URL") do
-  config :agent_manager, AgentManager.Channels.Http, callback_url: url
-end
-
-# SHOWCASE_SEED=true creates (and trains) the ready-made showcase bots at boot.
-if System.get_env("SHOWCASE_SEED") in ~w(true 1) do
-  config :agent_manager, AgentManager.Showcase, seed_on_boot: true
 end
 
 # MCP servers can also be given as JSON, e.g.

@@ -3,23 +3,23 @@ defmodule AgentManagerWeb.CapsTest do
   use AgentManagerWeb.ConnCase
 
   alias AgentManager.{Budget, Models}
-  alias AgentManager.Showcase.Settings
-  alias AgentManager.WhatsApp.TestClient
   alias AgentManagerWeb.ClientIP
 
   setup do
-    TestClient.clear()
-
     on_exit(fn ->
       Application.delete_env(:agent_manager, :api_token)
       Application.delete_env(:agent_manager, :trusted_proxies)
       Application.delete_env(:agent_manager, AgentManagerWeb.Plugs.RateLimit)
+      Application.delete_env(:agent_manager, AgentManager.Budget)
     end)
 
     :ok
   end
 
   defp hi, do: [%{role: :user, content: "hi"}]
+
+  defp put_limits(daily),
+    do: Application.put_env(:agent_manager, AgentManager.Budget, daily: daily)
 
   describe "provider keys" do
     test "a missing key fails before the call, naming the variable, without using budget" do
@@ -56,7 +56,7 @@ defmodule AgentManagerWeb.CapsTest do
 
   describe "model budget (the hard cap)" do
     test "refuses calls beyond the daily call budget" do
-      {:ok, _} = Settings.update(%{"limits" => %{"model_calls_daily" => 2}})
+      put_limits(%{"model_calls_daily" => 2})
 
       assert {:ok, _} = Models.chat("fake:chat", hi())
       assert {:ok, _} = Models.chat("fake:chat", hi())
@@ -66,7 +66,7 @@ defmodule AgentManagerWeb.CapsTest do
     end
 
     test "refuses calls once the daily token budget is spent" do
-      {:ok, _} = Settings.update(%{"limits" => %{"model_tokens_daily" => 50}})
+      put_limits(%{"model_tokens_daily" => 50})
       long = [%{role: :user, content: String.duplicate("palavra ", 50)}]
 
       assert {:ok, _} = Models.chat("fake:chat", long)
@@ -75,19 +75,18 @@ defmodule AgentManagerWeb.CapsTest do
     end
 
     test "nil means unlimited" do
-      {:ok, _} =
-        Settings.update(%{"limits" => %{"model_calls_daily" => nil, "model_tokens_daily" => nil}})
+      put_limits(%{"model_calls_daily" => nil, "model_tokens_daily" => nil})
 
       for _ <- 1..5, do: assert({:ok, _} = Models.chat("fake:chat", hi()))
       refute Budget.exhausted?()
     end
 
-    test "covers the HTTP API too, not only WhatsApp", %{conn: conn} do
+    test "covers the HTTP API too", %{conn: conn} do
       bot =
         create_bot!()
         |> train!(%{"bot_name" => "Loja", "source_text" => "Entregamos em todo o Brasil."})
 
-      {:ok, _} = Settings.update(%{"limits" => %{"model_calls_daily" => 0}})
+      put_limits(%{"model_calls_daily" => 0})
 
       test_pid = self()
 
@@ -145,63 +144,17 @@ defmodule AgentManagerWeb.CapsTest do
       Application.put_env(:agent_manager, :api_token, "right")
       bad = put_req_header(conn, "authorization", "Bearer wrong")
 
-      for _ <- 1..10, do: assert(bad |> get("/admin/showcase/usage") |> json_response(401))
+      for _ <- 1..10, do: assert(bad |> get("/models") |> json_response(401))
 
       good = put_req_header(conn, "authorization", "Bearer right")
-      assert good |> get("/admin/showcase/usage") |> json_response(429)
+      assert good |> get("/models") |> json_response(429)
       # the socket shares the lockout
       assert :error = AgentManagerWeb.Plugs.ApiAuth.check("right", "127.0.0.1")
 
       # another IP is unaffected
       assert %{good | remote_ip: {10, 0, 0, 3}}
-             |> get("/admin/showcase/usage")
+             |> get("/models")
              |> json_response(200)
-    end
-  end
-
-  describe "WhatsApp floods" do
-    defp webhook(conn, id) do
-      body =
-        Jason.encode!(%{
-          "entry" => [
-            %{
-              "changes" => [
-                %{
-                  "value" => %{
-                    "messages" => [
-                      %{
-                        "id" => id,
-                        "from" => "5511777",
-                        "type" => "text",
-                        "text" => %{"body" => "oi"}
-                      }
-                    ]
-                  }
-                }
-              ]
-            }
-          ]
-        })
-
-      sig =
-        "sha256=" <>
-          (:crypto.mac(:hmac, :sha256, "test-app-secret", body) |> Base.encode16(case: :lower))
-
-      conn
-      |> put_req_header("content-type", "application/json")
-      |> put_req_header("x-hub-signature-256", sig)
-      |> post("/whatsapp/webhook", body)
-    end
-
-    test "messages over the per-number rate are dropped (and Meta still gets 200)", %{conn: conn} do
-      {:ok, _} = Settings.update(%{"limits" => %{"messages_per_minute" => 2}})
-
-      for id <- ~w(w1 w2 w3 w4), do: assert(webhook(conn, id) |> response(200))
-
-      # first message: welcome + menu; second: hint + menu; the rest dropped
-      wait_until(fn -> length(TestClient.outbox("5511777")) >= 4 end)
-      Process.sleep(100)
-      assert length(TestClient.outbox("5511777")) == 4
     end
   end
 

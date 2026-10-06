@@ -5,6 +5,9 @@ defmodule AgentManager.MixProject do
     [
       app: :agent_manager,
       version: "0.1.0",
+      description:
+        "AI agent engine: event-driven pipelines, swappable models, tools and MCP on the BEAM",
+      source_url: "https://github.com/pgscasado/ai-agent-manager-core",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,

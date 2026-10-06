@@ -50,9 +50,17 @@ defmodule AgentManagerWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
+  plug :route
+
   # An app built on the engine routes its own paths first and forwards the
   # rest to `AgentManagerWeb.Router`:
   #
   #     config :agent_manager, router: MyAppWeb.Router
-  plug Application.compile_env(:agent_manager, :router, AgentManagerWeb.Router)
+  #
+  # Looked up per request: the engine compiles before the app that configures
+  # it, so the router can't be initialised at compile time.
+  defp route(conn, _opts) do
+    router = Application.get_env(:agent_manager, :router, AgentManagerWeb.Router)
+    router.call(conn, router.init([]))
+  end
 end

@@ -17,12 +17,6 @@ config :agent_manager, AgentManager.Models,
 
 config :agent_manager, AgentManager.Handlers.Webhooks, endpoints: []
 
-# WhatsApp messages go to an in-memory outbox (see test/support).
-config :agent_manager, AgentManager.WhatsApp,
-  client: AgentManager.WhatsApp.TestClient,
-  app_secret: "test-app-secret",
-  verify_token: "test-verify-token"
-
 config :agent_manager, AgentManagerWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "CRIudYVcdSoO9mP4mZA1jb4CGQXnkVQpxrxs5mLsRjOeB2IMFG/Sh/bXfrZzy3PA",
@@ -34,9 +28,3 @@ config :phoenix, sort_verified_routes_query_params: true
 
 # Job-timing "minutes" last 20ms in tests.
 config :agent_manager, AgentManager.Conversations.Server, minute_ms: 20
-
-# CEP lookups answer from a fixed table instead of ViaCEP (see test/support).
-config :agent_manager, AgentManager.Showcase.Demo.Cep, impl: AgentManager.Showcase.Demo.Cep.Fake
-
-# Retries of failed answers and sends wait 1s in production; 10ms in tests.
-config :agent_manager, AgentManager.Showcase.Flow, retry_ms: 10

@@ -189,7 +189,7 @@ defmodule AgentManager.ConversationsTest do
   test "the 1.0 line-break and attachment markers are only for bots that use them", %{bot: bot} do
     {:ok, messages, _} = Conversations.preview_prompt(bot, "u", "oi")
     [%{content: system} | _] = messages
-    refute system =~ ~s(Never omit "\\n")
+    refute system =~ ~s(Keep every "\\n")
     refute system =~ "ANEXO("
 
     {:ok, bot} =
@@ -202,8 +202,8 @@ defmodule AgentManager.ConversationsTest do
       })
 
     {:ok, [%{content: system} | _], _} = Conversations.preview_prompt(bot, "u2", "oi")
-    assert system =~ ~s(Never omit "\\n")
-    assert system =~ ~s(Never omit "ANEXO)
+    assert system =~ ~s(Keep every "\\n")
+    assert system =~ "Keep every ANEXO("
   end
 
   test "model failures produce the technical-problem handoff", %{bot: bot} do
