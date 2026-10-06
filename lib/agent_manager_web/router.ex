@@ -9,54 +9,6 @@ defmodule AgentManagerWeb.Router do
     plug AgentManagerWeb.Plugs.ApiAuth, required: false
   end
 
-  pipeline :admin do
-    plug :accepts, ["json"]
-    plug AgentManagerWeb.Plugs.RateLimit, bucket: :admin, limit: 30
-    plug AgentManagerWeb.Plugs.ApiAuth, required: true
-  end
-
-  # Meta calls this without our token; POSTs are verified by signature instead.
-  # Every delivery comes from Meta's servers, so the IP limit is generous; the
-  # per-number limit (messages_per_minute) applies inside the controller.
-  pipeline :webhook do
-    plug :accepts, ["json"]
-    plug AgentManagerWeb.Plugs.RateLimit, bucket: :webhook, limit: 600
-  end
-
-  scope "/whatsapp", AgentManagerWeb do
-    pipe_through :webhook
-    get "/webhook", WhatsAppController, :verify
-    post "/webhook", WhatsAppController, :receive
-  end
-
-  # Channels: each turns its webhook into a showcase message (see AgentManager.Channels).
-  scope "/channels", AgentManagerWeb do
-    scope "/whatsapp" do
-      pipe_through :webhook
-      get "/webhook", WhatsAppController, :verify
-      post "/webhook", WhatsAppController, :receive
-    end
-
-    scope "/http" do
-      pipe_through :api
-      post "/messages", HttpChannelController, :create
-      get "/messages", HttpChannelController, :index
-    end
-  end
-
-  scope "/admin/showcase", AgentManagerWeb do
-    pipe_through :admin
-    get "/settings", ShowcaseAdminController, :show_settings
-    put "/settings", ShowcaseAdminController, :update_settings
-    delete "/settings", ShowcaseAdminController, :reset_settings
-    get "/usage", ShowcaseAdminController, :usage
-    get "/messages", ShowcaseAdminController, :messages
-    post "/seed", ShowcaseAdminController, :seed
-    get "/stores/:bot/catalog", ShowcaseAdminController, :catalog
-    put "/stores/:bot/products", ShowcaseAdminController, :put_products
-    delete "/stores/:bot/products/:id", ShowcaseAdminController, :delete_product
-  end
-
   # The API is served both at the root and under /1.0.
   for prefix <- ["/", "/1.0"] do
     scope prefix, AgentManagerWeb, as: false do
@@ -78,15 +30,6 @@ defmodule AgentManagerWeb.Router do
         patch "/:id/models", BotController, :update_models
         patch "/:id/tools", BotController, :update_tools
         patch "/:id/job_timings", BotController, :job_timings
-
-        get "/:id/qa", QAController, :show
-        put "/:id/qa", QAController, :update
-        post "/:id/qa/run", QAController, :run
-        get "/:id/qa/sessions/:seq", QAController, :session
-        get "/:id/qa/regressions", QAController, :regressions
-        get "/:id/qa/clusters", QAController, :clusters
-        post "/:id/qa/clusters", QAController, :cluster
-        get "/:id/qa/optimizations", QAController, :optimizations
 
         patch "/:id/temperature/:value", BotController, :patch_model_field,
           private: %{field: :temperature}
@@ -133,7 +76,6 @@ defmodule AgentManagerWeb.Router do
 
       get "/models", SystemController, :models
       get "/pipelines", SystemController, :pipelines
-      get "/qa/taxonomy", QAController, :taxonomy
       get "/tools", SystemController, :tools
       get "/mcp/servers", SystemController, :mcp_servers
     end

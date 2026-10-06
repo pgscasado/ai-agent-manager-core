@@ -83,4 +83,14 @@ config :logger, :default_formatter,
 
 config :phoenix, :json_library, Jason
 
+# The business app, plugged into the engine's extension points.
+config :agent_manager,
+  children: [AgentManagerBusiness.Supervisor],
+  router: AgentManagerBusiness.Router
+
+config :agent_manager, AgentManager.Events.Supervisor, extra_handlers: [AgentManager.QA.Auditor]
+config :agent_manager, AgentManager.Budget, limits: AgentManager.Showcase.Limits
+config :agent_manager, AgentManager.Prompts, impl: AgentManagerBusiness.Prompts
+config :agent_manager, AgentManager.Tools, groups: %{"demo" => AgentManager.Showcase.Demo}
+
 import_config "#{config_env()}.exs"

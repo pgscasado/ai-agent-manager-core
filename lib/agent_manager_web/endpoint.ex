@@ -50,5 +50,9 @@ defmodule AgentManagerWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
-  plug AgentManagerWeb.Router
+  # An app built on the engine routes its own paths first and forwards the
+  # rest to `AgentManagerWeb.Router`:
+  #
+  #     config :agent_manager, router: MyAppWeb.Router
+  plug Application.compile_env(:agent_manager, :router, AgentManagerWeb.Router)
 end

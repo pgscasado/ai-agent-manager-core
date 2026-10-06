@@ -1,30 +1,38 @@
 defmodule AgentManager.Budget do
   @moduledoc """
   The hard cap on model spend: a daily budget of chat-model calls and tokens
-  that every call goes through (`Models.chat/3`), whatever started it - the
-  WhatsApp showcase, the HTTP API, tool rounds, a future route or a bug.
+  that every call goes through (`Models.chat/3`), whatever started it - a
+  channel, the HTTP API, tool rounds, a future route or a bug.
 
-  Limits come from the runtime settings (`limits.model_calls_daily`,
-  `limits.model_tokens_daily`; `nil` is unlimited), so they change without a
-  deploy. Calls are reserved atomically before the request; tokens are added
-  when the answer arrives, so the token cap can be overshot by at most the
-  calls already in flight.
+  Limits (`model_calls_daily`, `model_tokens_daily`; `nil` is unlimited) come
+  from a limits source: `AgentManager.Budget.Static` (config / environment
+  variables) by default, or any module implementing this behaviour, e.g. one
+  backed by runtime settings so limits change without a deploy:
 
-  Calls made with `budget: :qa` (QA audits and evaluation sessions: their
-  questions, judge, rule rewrites and the bot's answers to them) count
-  against a budget of their own instead (`limits.qa_calls_daily`,
-  `limits.qa_tokens_daily`), so evaluating bots never starves the answers
-  people are waiting for, nor the other way round.
+      config :agent_manager, AgentManager.Budget, limits: MyApp.Settings
+
+  Calls are reserved atomically before the request; tokens are added when the
+  answer arrives, so the token cap can be overshot by at most the calls
+  already in flight.
+
+  Calls made with `budget: :qa` (evaluation sessions: their questions, judge
+  and the bot's answers to them) count against a budget of their own instead
+  (`qa_calls_daily`, `qa_tokens_daily`), so evaluating bots never starves the
+  answers people are waiting for, nor the other way round.
   """
 
   require Logger
 
   alias AgentManager.KV
-  alias AgentManager.Showcase.{Limits, Settings}
+
+  @doc "Today's limit `name` (e.g. `\"model_calls_daily\"`), `nil` when unlimited."
+  @callback limit(name :: String.t()) :: non_neg_integer() | nil
+  @doc "The budget's current day (daily limits reset when it changes)."
+  @callback today() :: Date.t()
 
   @doc "Reserves one model call in `scope` (`nil` or `:qa`), or refuses it when today's budget is spent."
   def reserve_call(scope \\ nil) do
-    day = Limits.today()
+    day = today()
 
     cond do
       over?(limit(scope, "tokens"), KV.counter(tokens_key(scope, day))) ->
@@ -53,7 +61,7 @@ defmodule AgentManager.Budget do
     tokens =
       usage[:total_tokens] || (usage[:prompt_tokens] || 0) + (usage[:completion_tokens] || 0)
 
-    if tokens > 0, do: KV.incr(tokens_key(scope, Limits.today()), tokens)
+    if tokens > 0, do: KV.incr(tokens_key(scope, today()), tokens)
     :ok
   end
 
@@ -61,7 +69,7 @@ defmodule AgentManager.Budget do
 
   @doc "Whether today's budget of `scope` is spent (checked before starting an answer)."
   def exhausted?(scope \\ nil) do
-    day = Limits.today()
+    day = today()
 
     over?(limit(scope, "calls"), KV.counter(calls_key(scope, day))) or
       over?(limit(scope, "tokens"), KV.counter(tokens_key(scope, day)))
@@ -69,7 +77,7 @@ defmodule AgentManager.Budget do
 
   @doc "Today's spend, for the admin API."
   def usage do
-    day = Limits.today()
+    day = today()
 
     %{
       "model_calls" => KV.counter(calls_key(nil, day)),
@@ -83,8 +91,13 @@ defmodule AgentManager.Budget do
     }
   end
 
-  defp limit(nil, kind), do: Settings.limit("model_#{kind}_daily")
-  defp limit(:qa, kind), do: Settings.limit("qa_#{kind}_daily")
+  defp limit(nil, kind), do: source().limit("model_#{kind}_daily")
+  defp limit(:qa, kind), do: source().limit("qa_#{kind}_daily")
+
+  defp today, do: source().today()
+
+  defp source,
+    do: Application.get_env(:agent_manager, __MODULE__, [])[:limits] || AgentManager.Budget.Static
 
   defp over?(nil, _used), do: false
   defp over?(limit, used), do: used >= limit

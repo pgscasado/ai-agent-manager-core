@@ -8,7 +8,7 @@ defmodule AgentManager.Tools do
   | source | id | model-facing name |
   |---|---|---|
   | local module | `local:current_time` | `current_time` |
-  | showcase demo API | `demo:booking_book` | `booking_book` |
+  | module of a tool group `demo` | `demo:booking_book` | `booking_book` |
   | MCP server `crm`, tool `find-customer` | `mcp:crm/find-customer` | `crm__find-customer` |
 
   Bots opt in through `model_config.tools`, a list of ids or globs:
@@ -20,6 +20,12 @@ defmodule AgentManager.Tools do
       config :agent_manager, AgentManager.Tools,
         local: [AgentManager.Tools.CurrentTime, AgentManager.Tools.SearchKnowledge],
         timeout: 30_000
+
+  Groups are local modules too, under a prefix of their own so that bots
+  allowing `"local:*"` don't pick them up. Each group is a module whose
+  `tools/0` lists its tool modules:
+
+      config :agent_manager, AgentManager.Tools, groups: %{"demo" => MyApp.DemoTools}
   """
 
   alias AgentManager.MCP
@@ -31,17 +37,12 @@ defmodule AgentManager.Tools do
 
   @default_local [AgentManager.Tools.CurrentTime, AgentManager.Tools.SearchKnowledge]
 
-  # Demo APIs of the WhatsApp showcase: local modules too, but under their own
-  # "demo:" prefix so that bots allowing "local:*" don't pick them up.
-  @default_demo AgentManager.Showcase.Demo.tools()
-
-  @doc "Every tool currently available (local, demo + ready MCP servers)."
+  @doc "Every tool currently available (local, groups + ready MCP servers)."
   def available do
+    groups = for {prefix, group} <- config(:groups, %{}), do: {prefix, group.tools()}
+
     local =
-      for {prefix, mods} <- [
-            {"local", config(:local, @default_local)},
-            {"demo", config(:demo, @default_demo)}
-          ],
+      for {prefix, mods} <- [{"local", config(:local, @default_local)} | groups],
           mod <- mods do
         %Spec{
           id: prefix <> ":" <> mod.name(),

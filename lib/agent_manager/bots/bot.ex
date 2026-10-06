@@ -69,7 +69,7 @@ defmodule AgentManager.Bots.Bot.ModelConfig do
     # ("which time?"), and dropping them loses what the user answered.
     field :drop_missing_info_history, :boolean, default: true
     # settings of the bot's tools, one entry per capability
-    # (see AgentManager.Showcase.Demo.Config), e.g. %{"store" => %{"products" => [...]}}
+    # (read by the tools themselves), e.g. %{"store" => %{"products" => [...]}}
     field :tool_config, :map, default: %{}
     embeds_one :content, AgentManager.Bots.Bot.Content, on_replace: :update
   end

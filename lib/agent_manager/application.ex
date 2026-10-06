@@ -18,20 +18,19 @@ defmodule AgentManager.Application do
       │   ├── Registry bot_id -> running job (lets a restarted coordinator adopt jobs)
       │   ├── Task.Supervisor - training jobs
       │   └── Training.Coordinator - queue + concurrency limit
-      ├── AgentManager.QA.Root (rest_for_one)
-      │   ├── Registry bot_id -> running audit session (one per bot)
-      │   └── Task.Supervisor - audit sessions
       ├── AgentManager.MCP.Root (rest_for_one)
       │   ├── Registry server name -> client (value: status + tool list)
       │   ├── DynamicSupervisor - one MCP.Client per server
       │   └── Task - starts the configured servers at boot
-      ├── AgentManager.Showcase.Root (rest_for_one)  - the WhatsApp showcase
-      │   ├── Registry phone -> session
-      │   ├── DynamicSupervisor - one Showcase.Session per active WhatsApp user
-      │   └── Task - seeds the ready-made bots at boot (SHOWCASE_SEED=true)
+      ├── ...extensions                        - `config :agent_manager, :children`
       └── AgentManagerWeb.Endpoint
 
   Handlers start before anything that publishes, so no event is missed at boot.
+
+  Applications built on the engine add their own supervisors (started before
+  the endpoint, so they are up before the first request):
+
+      config :agent_manager, children: [MyApp.Supervisor]
   """
 
   use Application
@@ -46,7 +45,6 @@ defmodule AgentManager.Application do
           {Phoenix.PubSub, name: AgentManager.PubSub},
           {Task.Supervisor, name: AgentManager.TaskSupervisor},
           AgentManager.RateLimit,
-          AgentManager.Channels.Http,
           AgentManager.Models.Supervisor,
           AgentManager.Events.Supervisor,
           supervisor(AgentManager.Conversations.Root, [
@@ -59,22 +57,14 @@ defmodule AgentManager.Application do
             {Task.Supervisor, name: AgentManager.Training.TaskSupervisor},
             AgentManager.Training.Coordinator
           ]),
-          supervisor(AgentManager.QA.Root, [
-            {Registry, keys: :unique, name: AgentManager.QA.Registry},
-            {Task.Supervisor, name: AgentManager.QA.TaskSupervisor}
-          ]),
           supervisor(AgentManager.MCP.Root, [
             {Registry, keys: :unique, name: AgentManager.MCP.Registry},
             {DynamicSupervisor, name: AgentManager.MCP.Supervisor, strategy: :one_for_one},
             {Task, &AgentManager.MCP.start_configured/0}
-          ]),
-          supervisor(AgentManager.Showcase.Root, [
-            {Registry, keys: :unique, name: AgentManager.Showcase.Registry},
-            {DynamicSupervisor, name: AgentManager.Showcase.Supervisor, strategy: :one_for_one},
-            {Task, &AgentManager.Showcase.Seeds.run_on_boot/0}
-          ]),
-          AgentManagerWeb.Endpoint
-        ]
+          ])
+        ] ++
+        Application.get_env(:agent_manager, :children, []) ++
+        [AgentManagerWeb.Endpoint]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: AgentManager.Supervisor)
   end
@@ -123,6 +113,8 @@ defmodule AgentManager.Events.Supervisor do
 
       config :agent_manager, AgentManager.Events.Supervisor,
         handlers: [MessageRecorder, UsageRecorder, TrainingRecorder, EventLogger, Webhooks, MyHandler]
+
+  or, keeping the defaults, `extra_handlers: [MyHandler]`.
   """
   use Supervisor
 
@@ -131,14 +123,14 @@ defmodule AgentManager.Events.Supervisor do
     AgentManager.Handlers.UsageRecorder,
     AgentManager.Handlers.TrainingRecorder,
     AgentManager.Handlers.EventLogger,
-    AgentManager.Handlers.Webhooks,
-    AgentManager.QA.Auditor
+    AgentManager.Handlers.Webhooks
   ]
 
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
 
   def handlers do
-    handlers = Application.get_env(:agent_manager, __MODULE__, [])[:handlers] || @default
+    config = Application.get_env(:agent_manager, __MODULE__, [])
+    handlers = (config[:handlers] || @default) ++ (config[:extra_handlers] || [])
     trace = AgentManager.Handlers.LiveTrace
 
     # LIVE_TRACE=true prints events on the console
